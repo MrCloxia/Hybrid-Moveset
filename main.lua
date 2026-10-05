@@ -948,7 +948,7 @@ local function mario_update(m)
     --GALAXY SPIN / SPIN JUMP
     if SPINACTIONS[m.action] and ((m.controller.buttonPressed & X_BUTTON) ~= 0) then
         if not e.didSpin then 
-            if m.action == ACT_IDLE or m.action == ACT_WALKING then
+            if m.action == ACT_IDLE or m.action == ACT_WALKING or m.action == ACT_PANTING then
                 m.vel.y = 25
                 e.fromGround = true
             else
