@@ -28,7 +28,7 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_CUSTOM_AIR_HIT_WALL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR)
 
---gLevelValues.entryLevel = LEVEL_BOB--LEVEL START DEBUG
+-- gLevelValues.entryLevel = LEVEL_SA--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -229,14 +229,14 @@ local function mario_update_spin_input(m)
         e.angleDeltaQueue[0] = thisFrameDelta
         angleOverFrames = angleOverFrames + thisFrameDelta
 
-        if angleOverFrames >= 0xA000 then
-            e.spinBufferTimer = SPIN_TIMER_SUCCESSFUL_INPUT
-        end
+        -- if angleOverFrames >= 0xA000 then
+        --     e.spinBufferTimer = SPIN_TIMER_SUCCESSFUL_INPUT
+        -- end
 
-        if e.spinBufferTimer > 0 then
-            e.spinInput = 1
-            e.spinBufferTimer = e.spinBufferTimer - 1
-        end
+        -- if e.spinBufferTimer > 0 then
+        --     e.spinInput = 1
+        --     e.spinBufferTimer = e.spinBufferTimer - 1
+        -- end
     else
         e.spinDirection = 0
         e.spinBufferTimer = 0
@@ -265,12 +265,21 @@ local function act_water_spin(m)--GALAXY SWIM / SPIN SWIM
         mario_set_forward_vel(m,math.max(math.min(m.forwardVel+35,90),40))
     end
 
+    e.spinBufferTimer = e.spinBufferTimer - 1
+    if (m.input & INPUT_B_PRESSED) ~= 0 then
+        e.spinBufferTimer = 5
+    end
+
     e.spinSpeed = e.spinSpeed * 0.78
     set_mario_animation(m, CHAR_ANIM_START_TWIRL)
     set_mario_particle_flags(m, PARTICLE_SPARKLES, 0)
 
     if m.actionTimer > 20 then
-        set_mario_action(m, ACT_WATER_ACTION_END, 0)
+        if e.spinBufferTimer > 0 then
+            m.actionTimer = -1
+        else
+            set_mario_action(m, ACT_WATER_ACTION_END, 0)
+        end
     else
         local targetPitch = -252.0 * m.controller.stickY
         local pitchVel;
@@ -359,11 +368,20 @@ local function act_water_spin(m)--GALAXY SWIM / SPIN SWIM
                 end
             end
 
-            local wallAngle = atan2s(m.wallNormal.z, m.wallNormal.x);
-            local dWallAngle = wallAngle - m.faceAngle.y;
+            local wcd = collision_get_temp_wall_collision_data()
+            resolve_and_return_wall_collisions_data(m.pos, 0, 120.0, wcd)
 
-            if m.forwardVel > 30 and check_wall_kick(mjm) then --Needs a better way to check wall hit
-                bonk()
+            if wcd.numWalls > 0 then
+                for i = 0, (wcd.numWalls - 1) do
+                    local wall = wcd.walls[i + 1]
+                    local wallAngle = atan2s(wall.normal.z, wall.normal.x);
+                    local dWallAngle = wallAngle - m.faceAngle.y;
+                    limit_angle(dWallAngle)
+
+                    if m.forwardVel > 30 and (wallAngle <= -0x71C8 or dWallAngle >= 0x71C8) then --Needs a better way to check wall hit
+                        bonk()
+                    end
+                end
             end
         end
 
@@ -740,8 +758,8 @@ end
 
 local function before_set_mario_action(m, action)
     local s = gPlayerSyncTable[m.playerIndex]
-    if not s.usingHybird then 
-        return action 
+    if not s.usingHybird then
+        return action
     end
     return convert_actions[action] ~= nil and convert_actions[action] or action
 end
