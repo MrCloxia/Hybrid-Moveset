@@ -158,8 +158,13 @@ local function limit_angle(a)
 end
 
 function no_fall_damage(m)
-    if not m or m.playerIndex == nil then return end
-    if not s.usingHybird then return end
+    local s = gPlayerSyncTable[m.playerIndex]
+    if not m or m.playerIndex == nil then 
+        return 
+    end
+    if not s.usingHybird then 
+        return 
+    end
     m.peakHeight = m.pos.y
 end
 
