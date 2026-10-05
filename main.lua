@@ -55,7 +55,8 @@ local SPINACTIONS = {
     [ACT_FLYING] = true,
     [ACT_WATER_JUMP] = true,
     [ACT_AIR_DASH_END] = true,
-    [ACT_BUTT_SLIDE_AIR] = true
+    [ACT_BUTT_SLIDE_AIR] = true,
+    [ACT_PANTING] = true
 }
 
 local WATERACTIONS = {
