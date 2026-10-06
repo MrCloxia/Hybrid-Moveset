@@ -23,6 +23,7 @@ ACT_WALL_SLIDE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_F
 ACT_ROLL = allocate_mario_action(ACT_GROUP_MOVING)
 ACT_AIR_DASH = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_AIR_DASH_END = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_TWIRL_N_PLACE = allocate_mario_action(ACT_GROUP_MOVING | ACT_FLAG_MOVING | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_DOLPHIN_DIVE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_WATER_SPIN = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
@@ -138,6 +139,9 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.fromGround = false
     e.didSpin = false
     e.didAirDash = false
+    e.twirlYaw = 0
+    e.twirlAmount = 0
+    e.angleVel = 0
     e.swimSpinAngle = 0
     e.GPtWP = false
     e.didSwimDive = false
@@ -624,6 +628,38 @@ local function act_air_dash_end(m)--AIR DASH END
     end
 end
 
+local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
+    local e = gMarioStateExtras[m.playerIndex]
+    local stepResult = perform_air_step(m, 0)
+    m.marioBodyState.handState = MARIO_HAND_OPEN
+    m.vel.x = 0
+    m.vel.z = 0
+    m.vel.y = m.vel.y - 0.25
+    m.vel.y = math.max(m.vel.y, -18)
+    m.faceAngle.x = m.intendedYaw
+    m.faceAngle.z = m.intendedYaw
+
+    if (m.actionTimer % 3) == 0 then
+        play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, 1.45)
+    end
+
+    if m.actionTimer == 0 then
+        if e.spinAngle == nil then
+            e.spinAngle = 0
+        end
+        e.spinSpeed = 10
+        set_mario_animation(m, CHAR_ANIM_TWIRL)
+    end
+    e.spinAngle = e.spinAngle + (0x10000 * e.spinSpeed / 60)
+    m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y + e.spinAngle)
+
+    if m.actionTimer >= 15 then
+        set_mario_action(m, ACT_IDLE, 0)
+    end
+
+    m.actionTimer = m.actionTimer + 1
+end
+
 local function act_water_ground_pound(m)--WATER GROUND POUND
     local e = gMarioStateExtras[m.playerIndex]
     m.forwardVel = 0
@@ -999,6 +1035,31 @@ local function mario_update(m)
         end
     end
 
+    --SUNSHINE SPIN / TWIRL N PLACE
+    local stickYaw = atan2s(m.controller.stickY, m.controller.stickX)
+    if math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 and m.forwardVel < 20 then
+        if e.twirlYaw == nil then
+            e.twirlYaw = stickYaw
+            e.twirlAmount = 0
+        end
+        local analogStick = stickYaw - e.twirlYaw
+        if analogStick > 0x8000 then
+            analogStick = analogStick - 0x10000
+        elseif analogStick < -0x8000 then
+            analogStick = analogStick + 0x10000
+        end
+        e.twirlYaw = stickYaw
+        e.twirlAmount = e.twirlAmount + analogStick
+        if math.abs(e.twirlAmount) >= 0x10000 then
+            e.twirlAmount = 0
+            e.twirlYaw = nil
+            --set_mario_action(m, ACT_TWIRL_N_PLACE, 0)
+        end
+    else
+        e.twirlYaw = nil
+        e.twirlAmount = 0
+    end
+
     if WATERACTIONS[m.action] then
         if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 180 then--WATER GROUND POUND
             set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
@@ -1071,6 +1132,7 @@ hook_mario_action(ACT_WALL_SLIDE, { every_frame = act_wall_slide, gravity = act_
 hook_mario_action(ACT_ROLL, { every_frame = act_roll}, INT_TRIP)
 hook_mario_action(ACT_AIR_DASH, { every_frame = act_air_dash}, INT_SLIDE_KICK)
 hook_mario_action(ACT_AIR_DASH_END, { every_frame = act_air_dash_end})
+hook_mario_action(ACT_TWIRL_N_PLACE, { every_frame = act_twirl_n_place})
 hook_mario_action(ACT_DOLPHIN_DIVE, { every_frame = act_dolphin_dive}, INT_SLIDE_KICK)
 hook_mario_action(ACT_WATER_SPIN, { every_frame = act_water_spin}, INT_FAST_ATTACK_OR_SHELL)
 hook_mario_action(ACT_WATER_GROUND_POUND, { every_frame = act_water_ground_pound }, INT_GROUND_POUND)
