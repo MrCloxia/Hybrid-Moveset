@@ -18,6 +18,7 @@ local math_floor = math.floor
 
 ACT_FAKE_FREEFALL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_SPIN_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_SPIN_JUMP_END = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_WALL_SLIDE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_MOVING | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_ROLL = allocate_mario_action(ACT_GROUP_MOVING)
 ACT_AIR_DASH = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
@@ -80,7 +81,8 @@ local AIRDASHACTIONS = {
     [ACT_DIVE] = true,
     [ACT_FREEFALL] = true,
     [ACT_WALL_KICK_AIR] = true,
-    [ACT_SPIN_JUMP] = true
+    [ACT_SPIN_JUMP] = true,
+    [ACT_SPIN_JUMP_END] = true
 }
 
 local convert_actions = {
@@ -131,9 +133,9 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.savedWallSlide = false
 
     e.animFrame = 0
-    e.spinRiseTimer = 0
     e.groundPoundCooldown = 0
     e.hangSpeed = 0
+    e.fromGround = false
     e.didSpin = false
     e.didAirDash = false
     e.swimSpinAngle = 0
@@ -449,23 +451,21 @@ local function act_spin_jump(m)--GALAXY SPIN / SPIN JUMP
     if not m or m.playerIndex == nil or not gMarioStateExtras[m.playerIndex] then
         return false
     end
-
-    m.marioBodyState.handState = MARIO_HAND_OPEN
-
-    update_air_without_turn(m);
     local stepResult = perform_air_step(m, 0)
-
     local e = gMarioStateExtras[m.playerIndex]
-    
+    m.marioBodyState.handState = MARIO_HAND_OPEN
+    update_air_without_turn(m);
+
     if stepResult == AIR_STEP_LANDED then
         if e.fromGround then
-            e.fromGround = false
-        else
             set_mario_action(m, ACT_IDLE, 0)
+            play_sound(SOUND_ACTION_TERRAIN_LANDING, m.marioObj.header.gfx.cameraToObject)
+            return
+        else
+            set_mario_action(m, ACT_FREEFALL_LAND, 0)
         end
         return
     end
-
 
     if m.actionTimer == 0 then
         e.spinSpeed = 1
@@ -484,27 +484,38 @@ local function act_spin_jump(m)--GALAXY SPIN / SPIN JUMP
         set_mario_animation(m, CHAR_ANIM_START_TWIRL)
         set_mario_particle_flags(m, PARTICLE_SPARKLES, 0)
     else
-        set_mario_animation(m, CHAR_ANIM_GENERAL_FALL)
-        m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y)
-
-        if (m.input & INPUT_B_PRESSED) ~= 0 then
-            if m.forwardVel < 35 then
-                m.faceAngle.y = m.intendedYaw
-                m.vel.y = 45
-                mario_set_forward_vel(m, m.forwardVel * 1.35)
-                set_mario_action(m, ACT_JUMP_KICK, 0)
-            else
-                set_mario_action(m, ACT_DIVE, 0)
-                return false
-            end
-        elseif (m.controller.buttonPressed & Z_TRIG) ~= 0 then
-            set_mario_action(m, ACT_GROUND_POUND, 0)
-            return false
-        end
+        set_mario_action(m, ACT_SPIN_JUMP_END, 0)
     end
 
     m.actionTimer = m.actionTimer + 1
     return false
+end
+
+local function act_spin_jump_end(m)--GALAXY SPIN END / SPIN JUMP END
+    local stepResult = perform_air_step(m, 0)
+    local e = gMarioStateExtras[m.playerIndex]
+    set_mario_animation(m, CHAR_ANIM_GENERAL_FALL)
+    m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y)
+
+    if stepResult == AIR_STEP_NONE and e.fromGround or stepResult == AIR_STEP_LANDED then
+        set_mario_action(m, ACT_FREEFALL_LAND, 0)
+        return
+    end
+
+    if (m.input & INPUT_B_PRESSED) ~= 0 then
+        if m.forwardVel < 35 then
+            m.faceAngle.y = m.intendedYaw
+            m.vel.y = 45
+            mario_set_forward_vel(m, m.forwardVel * 1.35)
+            set_mario_action(m, ACT_JUMP_KICK, 0)
+        else
+            set_mario_action(m, ACT_DIVE, 0)
+            return false
+        end
+    elseif (m.controller.buttonPressed & Z_TRIG) ~= 0 then
+        set_mario_action(m, ACT_GROUND_POUND, 0)
+        return false
+    end
 end
 
 function act_roll(m)--ROLL (ELEVATOR GAME 64's ROLL)
@@ -785,6 +796,7 @@ local function mario_on_set_action(m)
     end
 
     if (m.action & ACT_FLAG_AIR) == 0 then
+        e.fromGround = false
         e.didAirDash = false
         e.didSpin = false
         e.dashPress = 0
@@ -1054,6 +1066,7 @@ hook_event(HOOK_BEFORE_SET_MARIO_ACTION, before_set_mario_action)
 
 hook_mario_action(ACT_FAKE_FREEFALL, { every_frame = act_fake_freefall })
 hook_mario_action(ACT_SPIN_JUMP, { every_frame = act_spin_jump }, INT_KICK)
+hook_mario_action(ACT_SPIN_JUMP_END, { every_frame = act_spin_jump_end })
 hook_mario_action(ACT_WALL_SLIDE, { every_frame = act_wall_slide, gravity = act_wall_slide_gravity })
 hook_mario_action(ACT_ROLL, { every_frame = act_roll}, INT_TRIP)
 hook_mario_action(ACT_AIR_DASH, { every_frame = act_air_dash}, INT_SLIDE_KICK)
