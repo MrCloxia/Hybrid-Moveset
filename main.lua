@@ -703,6 +703,8 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         
     if stepResult == AIR_STEP_HIT_WALL then
         set_mario_action(m, ACT_AIR_HIT_WALL, 0)
+        e.didTwiAir = false
+        return
     elseif stepResult == GROUND_STEP_LEFT_GROUND then
         e.twirlSFX = e.twirlSFX + 1
         if (e.twirlSFX == 3 or e.twirlSFX == 6 or e.twirlSFX == 9) then
