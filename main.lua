@@ -408,21 +408,21 @@ local function act_water_spin(m)--GALAXY SWIM / SPIN SWIM
                 end
             end
 
-            local wcd = collision_get_temp_wall_collision_data()
-            resolve_and_return_wall_collisions_data(m.pos, 0, 120.0, wcd)
+            -- local wcd = collision_get_temp_wall_collision_data()  --Entire wall bonking logic. Doesn't work consistently & needs a proper way to get the wall normals.
+            -- resolve_and_return_wall_collisions_data(m.pos, 0, 120.0, wcd)
 
-            if wcd.numWalls > 0 then
-                for i = 0, (wcd.numWalls - 1) do
-                    local wall = wcd.walls[i + 1]
-                    local wallAngle = atan2s(wall.normal.z, wall.normal.x);
-                    local dWallAngle = wallAngle - m.faceAngle.y;
-                    limit_angle(dWallAngle)
+            -- if wcd.numWalls > 0 then
+            --     for i = 0, (wcd.numWalls - 1) do
+            --         local wall = wcd.walls[i + 1]
+            --         local wallAngle = atan2s(wall.normal.z, wall.normal.x);
+            --         local dWallAngle = wallAngle - m.faceAngle.y;
+            --         limit_angle(dWallAngle)
 
-                    if m.forwardVel > 30 and (wallAngle <= -0x71C8 or dWallAngle >= 0x71C8) then --Needs a better way to check wall hit
-                        bonk()
-                    end
-                end
-            end
+            --         if m.forwardVel > 30 and (wallAngle <= -0x71C8 or dWallAngle >= 0x71C8) then
+            --             bonk()
+            --         end
+            --     end
+            -- end
         end
 
         mario_set_forward_vel(m,m.forwardVel-1)
@@ -1124,11 +1124,11 @@ local function mario_update(m)
 
     --AIR DASH
     if AIRDASHACTIONS[m.action] and not e.didAirDash and (m.input & INPUT_A_PRESSED) ~= 0 then
-        if m.forwardVel < 35 and m.vel.y <= 10 then
-            m.faceAngle.y = m.intendedYaw
-            mario_set_forward_vel(m, m.forwardVel * 1.35)
-            set_mario_action(m, ACT_JUMP_KICK, 0)
-        end
+        -- if m.forwardVel < 35 and m.vel.y <= 10 then --Air kick function when too slow to do the dash.
+        --     m.faceAngle.y = m.intendedYaw
+        --     mario_set_forward_vel(m, m.forwardVel * 1.35)
+        --     set_mario_action(m, ACT_JUMP_KICK, 0)
+        -- end
 
         if e.dashPress < 1 then
             if m.action & ACT_FLAG_AIR ~= 0 then
