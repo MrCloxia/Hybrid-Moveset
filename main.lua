@@ -655,7 +655,12 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
 
     if (m.actionTimer % 3) == 0 and stepResult ~= GROUND_STEP_LEFT_GROUND then
         play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, random_float(1, 1.45))
+    end
+    
+    if stepResult == AIR_STEP_HIT_WALL then
+        set_mario_action(m, ACT_AIR_HIT_WALL, 0)
     elseif stepResult == GROUND_STEP_LEFT_GROUND then
+        e.didTwiAir = true
         e.twirlSFX = e.twirlSFX + 1
         if e.twirlSFX == 2 or e.twirlSFX == 6 or e.twirlSFX == 9 then
             play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 2 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
@@ -850,7 +855,9 @@ local function mario_on_set_action(m)
         if e.didSpin then
             e.fromGround = false
         end
-    elseif (m.action & ACT_FLAG_AIR) == 0 then
+    end
+    
+    if (m.action & ACT_FLAG_AIR) == 0 then
         e.didAirDash = false
         e.didSpin = false
         e.dashPress = 0
@@ -1099,10 +1106,9 @@ local function mario_update(m)
     end
 
     --SUNSHINE SPIN JUMP
-    if m.action == ACT_TWIRL_N_PLACE and (m.input & INPUT_A_PRESSED) ~= 0 and not e.didTwiAir then
+    if m.action == ACT_TWIRL_N_PLACE and (m.action & ACT_FLAG_AIR == 0) and not e.didTwiAir and (m.input & INPUT_A_PRESSED) ~= 0 then
         play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
         m.vel.y = 80
-        e.fromGround = false
         e.didTwiAir = true
     end
 
