@@ -161,12 +161,13 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.groundPoundCooldown = 0
     e.hangSpeed = 0
     e.fromGround = false
+    e.spinAngle = 0
     e.didSpin = false
     e.didAirDash = false
     e.twirlYaw = 0
     e.twirlAmount = 0
     e.twirlTimer = 0
-    e.didTwiJump = false
+    e.didTwiAir = false
     e.twirlSFX = 0
     e.airTime = 0
     e.angleVel = 0
@@ -458,8 +459,7 @@ local function act_dolphin_dive(m)--DOLPHIN DIVE
     -- perform_air_step(m, 0)
 
     if m.actionTimer < 10 then
-        set_mario_particle_flags(m, PARTICLE_SPARKLES, 0)
-        spawn_sync_object(id_bhvSnowParticleSpawner, 0, (m.pos.x + math.random(-30, 30)), (m.pos.y + math.random(-30, 30)), (m.pos.z + math.random(-30, 30)), nil)--Snow particles work as water droplets, ha ha.
+        set_mario_particle_flags(m, (PARTICLE_SPARKLES | PARTICLE_SNOW), 0)--Snow particles work as water droplets, ha ha.
     end
 
     if stepResult == AIR_STEP_LANDED then
@@ -474,8 +474,6 @@ local function act_dolphin_dive(m)--DOLPHIN DIVE
     end
 
     m.marioObj.header.gfx.angle.x = m.vel.y * -0x100
-
-
     m.actionTimer = m.actionTimer + 1
 end
 
@@ -576,7 +574,7 @@ function act_roll(m)--ROLL (ELEVATOR GAME 64's ROLL)
     end
 
     if (m.input & INPUT_B_PRESSED) ~= 0 then
-        spawn_sync_object(id_bhvHorStarParticleSpawner, 0, m.pos.x, m.pos.y, m.pos.z, nil)
+        set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
         mario_set_forward_vel(m, math.max(math.min(120, m.forwardVel + 30), 30))
         play_sound(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject)
     end
@@ -668,35 +666,49 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     e.airTime = e.airTime + 1
 
     -- m.faceAngle.y = m.intendedYaw - approach_s32(m.intendedYaw - m.faceAngle.y, 0, 0x300, 0x300);
-    update_lava_boost_or_twirling(m)
-    update_air_without_turn(m);
-
-    local stepResult = perform_air_step(m, 0)
     m.marioBodyState.handState = MARIO_HAND_OPEN
     set_mario_particle_flags(m, PARTICLE_BREATH, 0)
 
 
     if m.actionTimer == 0 then
-        if e.spinAngle == nil then
-            e.spinAngle = 0
-        end
+        e.spinAngle = 0
         e.spinSpeed = 10
         set_mario_animation(m, CHAR_ANIM_TWIRL)
     end
 
+    --SUNSHINE SPIN JUMP
+    if (m.action & ACT_FLAG_AIR == 0) then
+        if not e.didTwiAir and (m.input & INPUT_A_PRESSED) ~= 0 then
+            play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
+            m.vel.y = 80
+            e.twirlSFX = 0
+            e.didTwiAir = true
+            if (m.input & INPUT_B_PRESSED) ~= 0 then
+                m.faceAngle.y = m.intendedYaw
+                mario_set_forward_vel(m, math.max(math.min(m.forwardVel + 50, 100), 50))
+                set_mario_action(m, ACT_DIVE, 0)
+                return
+            end
+        end
+    end
+
+    local stepResult = perform_air_step(m, 0)
+    update_lava_boost_or_twirling(m)
+    update_air_without_turn(m);
+
     if (m.actionTimer % 3) == 0 and stepResult ~= GROUND_STEP_LEFT_GROUND then
         play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, random_float(1, 1.45))
+        e.didTwiAir = false
     end
         
     if stepResult == AIR_STEP_HIT_WALL then
         set_mario_action(m, ACT_AIR_HIT_WALL, 0)
     elseif stepResult == GROUND_STEP_LEFT_GROUND then
-        e.didTwiAir = true
         e.twirlSFX = e.twirlSFX + 1
-        --play_sound_with_freq_scale(SOUND_ENV_WIND1, m.marioObj.header.gfx.cameraToObject, 3)
-        if e.twirlSFX == 3 or e.twirlSFX == 6 or e.twirlSFX == 9 then
+        if (e.twirlSFX == 3 or e.twirlSFX == 6 or e.twirlSFX == 9) then
             play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 3 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
         end
+        e.didTwiAir = true
         if (m.input & INPUT_Z_DOWN) ~= 0 then
             e.didTwiAir = false
             e.twirlTimer = 0
@@ -707,11 +719,14 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     end
 
     if stepResult == AIR_STEP_LANDED then
-        if m.actionTimer >= 20 then
+        if m.actionTimer >= 25 then
+            if e.didTwiAir then
+                play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
+            end
             e.didTwiAir = false
             e.twirlTimer = 0
             e.airTime = 0
-            set_mario_action(m, ACT_IDLE, 0)
+            set_mario_action(m, ACT_TWIRL_LAND, 0)
             return
         end
     end
@@ -742,10 +757,15 @@ local function act_drill_down(m)--DRILLING DOWN
             play_mario_heavy_landing_sound(m, SOUND_ACTION_TERRAIN_HEAVY_LANDING)
             set_mario_particle_flags(m, (PARTICLE_MIST_CIRCLE | PARTICLE_HORIZONTAL_STAR), 0);
             m.faceAngle.y = m.intendedYaw
+            m.squishTimer = 5
             e.fromGround = true
 
-            if (m.playerIndex == 0) then set_camera_shake_from_hit(SHAKE_GROUND_POUND) end
+            if (m.playerIndex == 0) then 
+                set_camera_shake_from_hit(SHAKE_GROUND_POUND) 
+            end
         end
+    else
+        play_sound_with_freq_scale(SOUND_AIR_HEAVEHO_MOVE, m.marioObj.header.gfx.cameraToObject, 2)
     end
     
     if m.actionTimer == 0 then
@@ -803,7 +823,7 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
         set_mario_action(m, ACT_WATER_IDLE, 0)
     elseif waterResult == WATER_STEP_HIT_FLOOR then
         play_sound(SOUND_ACTION_TERRAIN_HEAVY_LANDING, m.marioObj.header.gfx.cameraToObject)
-        spawn_sync_object(id_bhvHorStarParticleSpawner, 0, m.pos.x, m.pos.y, m.pos.z, nil)
+        set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
         set_mario_action(m, ACT_WATER_GROUND_POUND_LAND, 0)
     end
     
@@ -1145,7 +1165,7 @@ local function mario_update(m)
     end
 
     --SUNSHINE SPIN / TWIRL N PLACE
-    if SHINESPINACTIONS[m.action] and math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 then
+    if SHINESPINACTIONS[m.action] and math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 and not e.didTwiAir then
         local stickYaw = atan2s(m.controller.stickY, m.controller.stickX)
         if e.twirlYaw == nil then
             e.twirlYaw = stickYaw
@@ -1154,9 +1174,9 @@ local function mario_update(m)
         end
         local analogStick = stickYaw - e.twirlYaw
 
-        if analogStick > 0x8000 then
+        if analogStick > 0x4000 then
             analogStick = analogStick - 0x10000
-        elseif analogStick < -0x8000 then
+        elseif analogStick < -0x4000 then
             analogStick = analogStick + 0x10000
         end
         e.twirlYaw = stickYaw
@@ -1192,14 +1212,6 @@ local function mario_update(m)
         set_mario_action(m, ACT_DRILL_DOWN, 0)
     end
 
-    --SUNSHINE SPIN JUMP
-    if m.action == ACT_TWIRL_N_PLACE and (m.action & ACT_FLAG_AIR == 0) and not e.didTwiAir and (m.input & INPUT_A_PRESSED) ~= 0 then
-        play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
-        m.vel.y = 80
-        e.didTwiAir = true
-        e.twirlSFX = 0
-    end
-
     if WATERACTIONS[m.action] then
         if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 180 then--WATER GROUND POUND
             set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
@@ -1230,6 +1242,7 @@ local function inputs_command(msg)
 \#ffbb80\(X)\#ffffff\ - Galaxy Spin | \#ff7a7a\(A)\#d1e3ff\ in mid-air\#ffffff\ - Air Dash
 \#c0abff\(Z)\#ffdd00\ + \#7591ff\(B)\#ffffff\ - Roll | \#c0abff\(Z)\#ffdd00\ + \#7591ff\(B)\#d1e3ff\ in mid-air\#ffffff\ - Air Dive
 \#c0abff\(Z)\#ffdd00\ + \#ff7a7a\(A)\#ffffff\ - Ground Pound Jump
+\#83e6cb\(Joystick)\#ffffff\ - Sunshine Spin
 
 \#b5edff\Water Moveset:
 \#7591ff\(B)\#ffffff\ - Galaxy Swim | \#7591ff\(B)\#d1e3ff\ on water surface\#ffffff\ - Dolphin Dive]])
@@ -1238,6 +1251,8 @@ local function inputs_command(msg)
 \#ff7a7a\(!) - You're currently not using the moveset in order to perform these actions.
 \#ffdd00\(?) - If you wish to use them, please go into Pause/Mod Menu to enable them.]])
     play_sound(SOUND_MENU_LET_GO_MARIO_FACE, gGlobalSoundSource)
+    else
+        play_sound(SOUND_MENU_MESSAGE_APPEAR, gGlobalSoundSource)
     end
     return true-- = not an global message
 end
