@@ -24,6 +24,7 @@ ACT_ROLL = allocate_mario_action(ACT_GROUP_MOVING)
 ACT_AIR_DASH = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_AIR_DASH_END = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_TWIRL_N_PLACE = allocate_mario_action(ACT_GROUP_MOVING | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_DRILL_DOWN = allocate_mario_action(ACT_GROUP_MOVING | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_DOLPHIN_DIVE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_WATER_SPIN = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
@@ -693,8 +694,15 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         e.didTwiAir = true
         e.twirlSFX = e.twirlSFX + 1
         --play_sound_with_freq_scale(SOUND_ENV_WIND1, m.marioObj.header.gfx.cameraToObject, 3)
-        if e.twirlSFX == 2 or e.twirlSFX == 6 or e.twirlSFX == 9 then
-            play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 2 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
+        if e.twirlSFX == 3 or e.twirlSFX == 6 or e.twirlSFX == 9 then
+            play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 3 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
+        end
+        if (m.input & INPUT_Z_DOWN) ~= 0 then
+            e.didTwiAir = false
+            e.twirlTimer = 0
+            e.airTime = 0
+            set_mario_action(m, ACT_DRILL_DOWN, 0)
+            return
         end
     end
 
@@ -708,8 +716,49 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         end
     end
 
-    e.spinAngle = e.spinAngle + (0x10000 * e.spinSpeed / 60)
-    m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y + e.spinAngle)
+    e.spinAngle = e.spinAngle + (0x10000 * e.spinSpeed / 70)
+    m.marioObj.header.gfx.angle.y = e.spinAngle
+
+    m.actionTimer = m.actionTimer + 1
+end
+
+local function act_drill_down(m)--DRILLING DOWN
+    local e = gMarioStateExtras[m.playerIndex]
+
+    m.forwardVel = math.min(m.forwardVel,10)
+    m.vel.y = math.max(m.vel.y - 8, -200)
+    m.actionState = 1
+    update_air_without_turn(m);
+
+    local stepResult = perform_air_step(m, 0)
+    m.marioBodyState.handState = MARIO_HAND_OPEN
+    set_mario_particle_flags(m, PARTICLE_BREATH, 0)
+
+    if stepResult == AIR_STEP_LANDED then
+        if e.fromGround then
+            landing_step(m, CHAR_ANIM_TWIRL_LAND, ACT_IDLE)
+            return
+        else
+            play_mario_heavy_landing_sound(m, SOUND_ACTION_TERRAIN_HEAVY_LANDING)
+            set_mario_particle_flags(m, (PARTICLE_MIST_CIRCLE | PARTICLE_HORIZONTAL_STAR), 0);
+            m.faceAngle.y = m.intendedYaw
+            e.fromGround = true
+
+            if (m.playerIndex == 0) then set_camera_shake_from_hit(SHAKE_GROUND_POUND) end
+        end
+    end
+    
+    if m.actionTimer == 0 then
+        e.fromGround = false
+        play_sound_with_freq_scale(SOUND_ACTION_FLYING_FAST, m.marioObj.header.gfx.cameraToObject,1.5)
+        -- play_character_sound(m, CHAR_SOUND_GROUND_POUND_WAH);
+    end
+
+    e.spinAngle = e.spinAngle + (0x2500)
+    m.marioObj.header.gfx.angle.y = e.spinAngle
+
+    -- m.marioObj.header.gfx.scale.y = 1 + math.abs(m.vel.y / 10) --Squash n' stretch attempt (Doesn't work.)
+
     m.actionTimer = m.actionTimer + 1
 end
 
@@ -1138,11 +1187,17 @@ local function mario_update(m)
         e.twirlAmount = 0
     end
 
+    --DRILLING for Vanilla Twirling
+    if m.action == ACT_TWIRLING and (m.input & INPUT_Z_DOWN) ~= 0 then
+        set_mario_action(m, ACT_DRILL_DOWN, 0)
+    end
+
     --SUNSHINE SPIN JUMP
     if m.action == ACT_TWIRL_N_PLACE and (m.action & ACT_FLAG_AIR == 0) and not e.didTwiAir and (m.input & INPUT_A_PRESSED) ~= 0 then
         play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
         m.vel.y = 80
         e.didTwiAir = true
+        e.twirlSFX = 0
     end
 
     if WATERACTIONS[m.action] then
@@ -1218,6 +1273,7 @@ hook_mario_action(ACT_ROLL, { every_frame = act_roll}, INT_TRIP)
 hook_mario_action(ACT_AIR_DASH, { every_frame = act_air_dash}, INT_SLIDE_KICK)
 hook_mario_action(ACT_AIR_DASH_END, { every_frame = act_air_dash_end})
 hook_mario_action(ACT_TWIRL_N_PLACE, { every_frame = act_twirl_n_place, gravity = act_twirl_n_place_gravity })
+hook_mario_action(ACT_DRILL_DOWN, { every_frame = act_drill_down}, INT_GROUND_POUND)
 hook_mario_action(ACT_DOLPHIN_DIVE, { every_frame = act_dolphin_dive}, INT_SLIDE_KICK)
 hook_mario_action(ACT_WATER_SPIN, { every_frame = act_water_spin}, INT_FAST_ATTACK_OR_SHELL)
 hook_mario_action(ACT_WATER_GROUND_POUND, { every_frame = act_water_ground_pound }, INT_GROUND_POUND)
