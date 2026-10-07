@@ -655,6 +655,13 @@ local function act_air_dash_end(m)--AIR DASH END
     end
 end
 
+local function act_twirl_n_place_gravity(m)
+    local e = gMarioStateExtras[m.playerIndex]
+
+    m.vel.y = m.vel.y - (m.vel.y > 0 and 4 or 1)
+    m.vel.y = math.max(m.vel.y, (e.airTime >= 80 and -45 or -23))
+end
+
 local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     local e = gMarioStateExtras[m.playerIndex]
     e.airTime = e.airTime + 1
@@ -667,7 +674,6 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     m.marioBodyState.handState = MARIO_HAND_OPEN
     set_mario_particle_flags(m, PARTICLE_BREATH, 0)
 
-    m.vel.y = math.max(m.vel.y, (e.airTime >= 80 and -45 or -23))
 
     if m.actionTimer == 0 then
         if e.spinAngle == nil then
@@ -1211,7 +1217,7 @@ hook_mario_action(ACT_WALL_SLIDE, { every_frame = act_wall_slide, gravity = act_
 hook_mario_action(ACT_ROLL, { every_frame = act_roll}, INT_TRIP)
 hook_mario_action(ACT_AIR_DASH, { every_frame = act_air_dash}, INT_SLIDE_KICK)
 hook_mario_action(ACT_AIR_DASH_END, { every_frame = act_air_dash_end})
-hook_mario_action(ACT_TWIRL_N_PLACE, { every_frame = act_twirl_n_place})
+hook_mario_action(ACT_TWIRL_N_PLACE, { every_frame = act_twirl_n_place, gravity = act_twirl_n_place_gravity })
 hook_mario_action(ACT_DOLPHIN_DIVE, { every_frame = act_dolphin_dive}, INT_SLIDE_KICK)
 hook_mario_action(ACT_WATER_SPIN, { every_frame = act_water_spin}, INT_FAST_ATTACK_OR_SHELL)
 hook_mario_action(ACT_WATER_GROUND_POUND, { every_frame = act_water_ground_pound }, INT_GROUND_POUND)
