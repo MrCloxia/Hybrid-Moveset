@@ -639,6 +639,12 @@ end
 
 local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     local e = gMarioStateExtras[m.playerIndex]
+
+    -- m.faceAngle.y = m.intendedYaw - approach_s32(m.intendedYaw - m.faceAngle.y, 0, 0x300, 0x300);
+    
+    update_lava_boost_or_twirling(m)
+    update_air_without_turn(m);
+
     local stepResult = perform_air_step(m, 0)
     m.marioBodyState.handState = MARIO_HAND_OPEN
     set_mario_particle_flags(m, PARTICLE_BREATH, 0)
@@ -662,6 +668,7 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     elseif stepResult == GROUND_STEP_LEFT_GROUND then
         e.didTwiAir = true
         e.twirlSFX = e.twirlSFX + 1
+        -- m.faceAngle.y = m.intendedYaw
         if e.twirlSFX == 2 or e.twirlSFX == 6 or e.twirlSFX == 9 then
             play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 2 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
         end
@@ -676,7 +683,6 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
 
     e.spinAngle = e.spinAngle + (0x10000 * e.spinSpeed / 60)
     m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y + e.spinAngle)
-
     m.actionTimer = m.actionTimer + 1
 end
 
