@@ -30,7 +30,7 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_CUSTOM_AIR_HIT_WALL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR)
 
--- gLevelValues.entryLevel = LEVEL_SA--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_WMOTR--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -61,6 +61,35 @@ local SPINACTIONS = {
     [ACT_PANTING] = true
 }
 
+local AIRDASHACTIONS = {
+    [ACT_JUMP] = true,
+    [ACT_DOUBLE_JUMP] = true,
+    [ACT_TRIPLE_JUMP] = true,
+    [ACT_LONG_JUMP] = true,
+    [ACT_DIVE] = true,
+    [ACT_FREEFALL] = true,
+    [ACT_WALL_KICK_AIR] = true,
+    [ACT_SPIN_JUMP] = true,
+    [ACT_SPIN_JUMP_END] = true
+}
+
+local SHINESPINACTIONS = {
+    [ACT_IDLE] = true,
+    [ACT_WALKING] = true,
+    [ACT_PANTING] = true,
+    [ACT_FREEFALL] = true,
+    [ACT_BACKFLIP] = true,
+    [ACT_JUMP] = true,
+    [ACT_DOUBLE_JUMP] = true,
+    [ACT_TRIPLE_JUMP] = true,
+    [ACT_LONG_JUMP] = true,
+    [ACT_WALL_KICK_AIR] = true,
+    [ACT_DIVE] = true,
+    [ACT_TWIRL_N_PLACE] = true,
+    [ACT_AIR_DASH_END] = true,
+    [ACT_SPIN_JUMP_END] = true
+}
+
 local WATERACTIONS = {
     [ACT_WATER_IDLE] = true,
     [ACT_WATER_PUNCH] = true,
@@ -72,18 +101,6 @@ local WATERACTIONS = {
     --[ACT_HOLD_WATER_ACTION_END] = true,
     --[ACT_HOLD_SWIMMING_END] = true,
     --[ACT_HOLD_BREASTSTROKE] = true
-}
-
-local AIRDASHACTIONS = {
-    [ACT_JUMP] = true,
-    [ACT_DOUBLE_JUMP] = true,
-    [ACT_TRIPLE_JUMP] = true,
-    [ACT_LONG_JUMP] = true,
-    [ACT_DIVE] = true,
-    [ACT_FREEFALL] = true,
-    [ACT_WALL_KICK_AIR] = true,
-    [ACT_SPIN_JUMP] = true,
-    [ACT_SPIN_JUMP_END] = true
 }
 
 local GROUNDACTIONS = {
@@ -150,6 +167,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.twirlTimer = 0
     e.didTwiJump = false
     e.twirlSFX = 0
+    e.airTime = 0
     e.angleVel = 0
     e.swimSpinAngle = 0
     e.GPtWP = false
@@ -639,17 +657,17 @@ end
 
 local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     local e = gMarioStateExtras[m.playerIndex]
+    e.airTime = e.airTime + 1
 
     -- m.faceAngle.y = m.intendedYaw - approach_s32(m.intendedYaw - m.faceAngle.y, 0, 0x300, 0x300);
-    
     update_lava_boost_or_twirling(m)
     update_air_without_turn(m);
 
     local stepResult = perform_air_step(m, 0)
     m.marioBodyState.handState = MARIO_HAND_OPEN
     set_mario_particle_flags(m, PARTICLE_BREATH, 0)
-    m.vel.y = m.vel.y - 0.05
-    m.vel.y = math.max(m.vel.y, -23)
+
+    m.vel.y = math.max(m.vel.y, (e.airTime >= 80 and -45 or -23))
 
     if m.actionTimer == 0 then
         if e.spinAngle == nil then
@@ -662,22 +680,25 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     if (m.actionTimer % 3) == 0 and stepResult ~= GROUND_STEP_LEFT_GROUND then
         play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, random_float(1, 1.45))
     end
-    
+        
     if stepResult == AIR_STEP_HIT_WALL then
         set_mario_action(m, ACT_AIR_HIT_WALL, 0)
     elseif stepResult == GROUND_STEP_LEFT_GROUND then
         e.didTwiAir = true
         e.twirlSFX = e.twirlSFX + 1
-        -- m.faceAngle.y = m.intendedYaw
+        --play_sound_with_freq_scale(SOUND_ENV_WIND1, m.marioObj.header.gfx.cameraToObject, 3)
         if e.twirlSFX == 2 or e.twirlSFX == 6 or e.twirlSFX == 9 then
             play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 2 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
         end
     end
 
     if stepResult == AIR_STEP_LANDED then
-        if m.actionTimer >= 15 then
-            set_mario_action(m, ACT_IDLE, 0)
+        if m.actionTimer >= 20 then
+            e.didTwiAir = false
             e.twirlTimer = 0
+            e.airTime = 0
+            set_mario_action(m, ACT_IDLE, 0)
+            return
         end
     end
 
@@ -1069,7 +1090,7 @@ local function mario_update(m)
     end
 
     --SUNSHINE SPIN / TWIRL N PLACE
-    if math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 then
+    if SHINESPINACTIONS[m.action] and math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 then
         local stickYaw = atan2s(m.controller.stickY, m.controller.stickX)
         if e.twirlYaw == nil then
             e.twirlYaw = stickYaw
