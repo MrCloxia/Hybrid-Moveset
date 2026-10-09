@@ -1182,11 +1182,11 @@ local function mario_update(m)
             analogStick = analogStick + 0x10000
         end
         e.twirlYaw = stickYaw
-        e.twirlAmount = e.twirlAmount + analogStick
+        e.twirlAmount = e.twirlAmount + analogStick * ((m.action & ACT_FLAG_AIR == 0) and 1.0 or 1.4)
         e.twirlTimer = e.twirlTimer + 1
 
         if math.abs(e.twirlAmount) >= 0x10000 then
-            local analogSpeed = math.abs(e.twirlAmount) / e.twirlTimer
+            local analogSpeed = (math.abs(e.twirlAmount) / e.twirlTimer)
             if analogSpeed >= 0x0800 and e.twirlTimer <= 15 then
                 e.twirlAmount = 0
                 e.twirlYaw = nil
