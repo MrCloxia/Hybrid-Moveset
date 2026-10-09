@@ -31,7 +31,7 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_CUSTOM_AIR_HIT_WALL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR)
 
---gLevelValues.entryLevel = LEVEL_WMOTR--LEVEL START DEBUG
+gLevelValues.entryLevel = LEVEL_JRB--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -433,8 +433,9 @@ local function act_water_spin(m)--GALAXY SWIM / SPIN SWIM
 
         if (probe >= m.waterLevel - 80) then
             set_mario_action(m, ACT_DOLPHIN_DIVE, 0)--DOLPHIN DIVE
-            m.vel.y = m.forwardVel * 2
-            mario_set_forward_vel(m,m.forwardVel * 2)
+            local diveSpeed = m.forwardVel / 1.2 + 50
+            m.vel.y = diveSpeed * sins(m.faceAngle.x)
+            mario_set_forward_vel(m,diveSpeed * coss(m.faceAngle.x))
             play_sound_with_freq_scale(SOUND_OBJ_DIVING_INTO_WATER, m.marioObj.header.gfx.cameraToObject, 0.8)
             set_mario_particle_flags(m, PARTICLE_WATER_SPLASH, 0)
             if m.forwardVel > 40 then
@@ -442,6 +443,8 @@ local function act_water_spin(m)--GALAXY SWIM / SPIN SWIM
             else
                 play_mario_sound(m, SOUND_ACTION_SWIM_FAST, CHAR_SOUND_HOOHOO)
             end
+
+            return
         end
     end
 
@@ -464,6 +467,8 @@ local function act_dolphin_dive(m)--DOLPHIN DIVE
 
     if stepResult == AIR_STEP_LANDED then
         set_mario_action(m, ACT_DIVE_SLIDE, 0)
+
+        return
     end
 
     if (m.pos.y < m.waterLevel - 100) then
@@ -471,6 +476,8 @@ local function act_dolphin_dive(m)--DOLPHIN DIVE
         set_mario_particle_flags(m, PARTICLE_WATER_SPLASH, 0)
         play_sound(SOUND_ACTION_UNKNOWN432, m.marioObj.header.gfx.cameraToObject)
         set_mario_action(m, ACT_SWIMMING_END, 0)
+
+        return
     end
 
     m.marioObj.header.gfx.angle.x = m.vel.y * -0x100
