@@ -706,7 +706,7 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, random_float(1, 1.45))
         e.didTwiAir = false
     end
-    
+
     if stepResult == AIR_STEP_HIT_WALL then
         e.didTwiAir = false
         set_mario_action(m, ACT_AIR_HIT_WALL, 0)
@@ -1113,6 +1113,7 @@ local function mario_update(m)
     if m.action == ACT_GROUND_POUND and (m.input & INPUT_B_PRESSED) ~= 0 then
         mario_set_forward_vel(m, 22.2)
         m.vel.y = 37.7
+        set_mario_particle_flags(m, PARTICLE_MIST_CIRCLE, 0)
         set_mario_action(m, ACT_DIVE, 0)
         m.faceAngle.y = m.intendedYaw
         play_sound(SOUND_GENERAL_SWISH_WATER, m.marioObj.header.gfx.cameraToObject)
