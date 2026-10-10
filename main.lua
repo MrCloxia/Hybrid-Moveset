@@ -24,7 +24,7 @@ ACT_ROLL = allocate_mario_action(ACT_GROUP_MOVING)
 ACT_AIR_DASH = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_AIR_DASH_END = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_TWIRL_N_PLACE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
-ACT_DRILL_DOWN = allocate_mario_action(ACT_GROUP_MOVING | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_DRILL_DOWN = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_DOLPHIN_DIVE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_WATER_SPIN = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
@@ -467,7 +467,6 @@ local function act_dolphin_dive(m)--DOLPHIN DIVE
 
     if stepResult == AIR_STEP_LANDED then
         set_mario_action(m, ACT_DIVE_SLIDE, 0)
-
         return
     end
 
@@ -707,12 +706,13 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, random_float(1, 1.45))
         e.didTwiAir = false
     end
-        
+    
     if stepResult == AIR_STEP_HIT_WALL then
-        set_mario_action(m, ACT_AIR_HIT_WALL, 0)
         e.didTwiAir = false
-        return
-    elseif stepResult == GROUND_STEP_LEFT_GROUND then
+        set_mario_action(m, ACT_AIR_HIT_WALL, 0)
+    end
+    
+    if stepResult == GROUND_STEP_LEFT_GROUND then
         e.twirlSFX = e.twirlSFX + 1
         if (e.twirlSFX == 3 or e.twirlSFX == 6 or e.twirlSFX == 9) then
             play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 3 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
@@ -722,6 +722,7 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
             e.didTwiAir = false
             e.twirlTimer = 0
             e.airTime = 0
+            m.actionTimer = 0
             set_mario_action(m, ACT_DRILL_DOWN, 0)
             return
         end
@@ -751,43 +752,39 @@ local function act_drill_down(m)--DRILLING DOWN
 
     m.forwardVel = math.min(m.forwardVel,10)
     m.vel.y = math.max(m.vel.y - 8, -200)
-    m.actionState = 1
     update_air_without_turn(m);
 
     local stepResult = perform_air_step(m, 0)
     m.marioBodyState.handState = MARIO_HAND_OPEN
     set_mario_particle_flags(m, PARTICLE_BREATH, 0)
 
+    if m.actionTimer == 0 then
+        e.fromGround = false
+        e.airTime = 0
+        play_sound_with_freq_scale(SOUND_ACTION_FLYING_FAST, m.marioObj.header.gfx.cameraToObject, 1.5)
+        --play_character_sound(m, CHAR_SOUND_GROUND_POUND_WAH);
+    end
+
     if stepResult == AIR_STEP_LANDED then
-        if e.fromGround then
-            landing_step(m, CHAR_ANIM_TWIRL_LAND, ACT_IDLE)
-            return
-        else
+        if not e.fromGround then
             play_mario_heavy_landing_sound(m, SOUND_ACTION_TERRAIN_HEAVY_LANDING)
             set_mario_particle_flags(m, (PARTICLE_MIST_CIRCLE | PARTICLE_HORIZONTAL_STAR), 0);
             m.faceAngle.y = m.intendedYaw
             m.squishTimer = 5
-            e.fromGround = true
 
             if (m.playerIndex == 0) then 
                 set_camera_shake_from_hit(SHAKE_GROUND_POUND) 
             end
+
+            set_mario_action(m, ACT_TWIRL_LAND, 0)
+            e.fromGround = true
         end
     else
         play_sound_with_freq_scale(SOUND_AIR_HEAVEHO_MOVE, m.marioObj.header.gfx.cameraToObject, 2)
     end
-    
-    if m.actionTimer == 0 then
-        e.fromGround = false
-        play_sound_with_freq_scale(SOUND_ACTION_FLYING_FAST, m.marioObj.header.gfx.cameraToObject,1.5)
-        -- play_character_sound(m, CHAR_SOUND_GROUND_POUND_WAH);
-    end
 
     e.spinAngle = e.spinAngle + (0x2500)
     m.marioObj.header.gfx.angle.y = e.spinAngle
-
-    -- m.marioObj.header.gfx.scale.y = 1 + math.abs(m.vel.y / 10) --Squash n' stretch attempt (Doesn't work.)
-
     m.actionTimer = m.actionTimer + 1
 end
 
@@ -1219,6 +1216,13 @@ local function mario_update(m)
     --DRILLING for Vanilla Twirling
     if m.action == ACT_TWIRLING and (m.input & INPUT_Z_DOWN) ~= 0 then
         set_mario_action(m, ACT_DRILL_DOWN, 0)
+    end
+
+    --TRANSITION FROM DRILL TO ROLL
+    if m.prevAction == ACT_DRILL_DOWN and m.action == ACT_TWIRL_LAND and (m.input & INPUT_B_PRESSED) ~= 0 then
+        mario_set_forward_vel(m, 100)
+        play_sound_with_freq_scale(SOUND_OBJ2_MRI_SPINNING, m.marioObj.header.gfx.cameraToObject, 1.8)
+        set_mario_action(m, ACT_ROLL, 0)
     end
 
     if WATERACTIONS[m.action] then
