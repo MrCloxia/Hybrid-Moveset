@@ -1243,8 +1243,8 @@ local function mario_update(m)
         set_mario_action(m, ACT_DRILL_DOWN, 0)
     end
 
-    --TRANSITION FROM DRILL TO ROLL
-    if m.prevAction == ACT_DRILL_DOWN and m.action == ACT_TWIRL_LAND and (m.input & INPUT_B_PRESSED) ~= 0 then
+    --TRANSITION FROM DRILL/GROUND POUND TO ROLL
+    if (m.prevAction == ACT_DRILL_DOWN and m.action == ACT_TWIRL_LAND) or (m.action == ACT_GROUND_POUND_LAND) and (m.input & INPUT_B_PRESSED) ~= 0 then
         mario_set_forward_vel(m, 100)
         play_sound_with_freq_scale(SOUND_OBJ2_MRI_SPINNING, m.marioObj.header.gfx.cameraToObject, 1.8)
         set_mario_action(m, ACT_ROLL, 0)
