@@ -19,7 +19,8 @@ local math_floor = math.floor
 ACT_FAKE_FREEFALL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_SPIN_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_SPIN_JUMP_END = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
-ACT_WALL_SLIDE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_MOVING | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_WALL_SLIDE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_CUSTOM_AIR_HIT_WALL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR)
 ACT_ROLL = allocate_mario_action(ACT_GROUP_MOVING)
 ACT_AIR_DASH = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_AIR_DASH_END = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
@@ -29,7 +30,6 @@ ACT_DOLPHIN_DIVE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT
 ACT_WATER_SPIN = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
-ACT_CUSTOM_AIR_HIT_WALL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR)
 
 -- gLevelValues.entryLevel = LEVEL_JRB--LEVEL START DEBUG
 
@@ -170,6 +170,8 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.didTwiAir = false
     e.twirlSFX = 0
     e.airTime = 0
+    e.twirlWalls = 2
+    e.fromWall = false
     e.angleVel = 0
     e.swimSpinAngle = 0
     e.GPtWP = false
@@ -698,7 +700,7 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         end
     end
 
-    local stepResult = perform_air_step(m, 0)
+    local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
     update_lava_boost_or_twirling(m)
     update_air_without_turn(m);
 
@@ -707,9 +709,18 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         e.didTwiAir = false
     end
 
-    if stepResult == AIR_STEP_HIT_WALL then
+    if stepResult == AIR_STEP_GRABBED_LEDGE then
         e.didTwiAir = false
-        set_mario_action(m, ACT_AIR_HIT_WALL, 0)
+        set_mario_action(m, ACT_LEDGE_GRAB, 0)
+    elseif stepResult == AIR_STEP_HIT_WALL then
+        if e.twirlWalls <= 0 then
+            mario_bonk_reflection(m, true)
+        else
+            e.didTwiAir = false
+            e.fromWall = true
+            set_mario_action(m, ACT_AIR_HIT_WALL, 0)
+            return
+        end
     end
     
     if stepResult == GROUND_STEP_LEFT_GROUND then
@@ -864,6 +875,9 @@ function act_wall_slide(m)--WALL SLIDE
     if (m.input & INPUT_A_PRESSED) ~= 0 then
         m.vel.y = 52.0
         mario_set_forward_vel(m, e.stored_wall_speed)
+        if e.fromWall then
+            e.twirlWalls = e.twirlWalls - 1
+        end
         return set_mario_action(m, ACT_WALL_KICK_AIR, 0)
     end
 
@@ -898,6 +912,8 @@ local function act_wall_slide_gravity(m)
 end
 
 local function act_air_hit_wall(m)
+    local e = gMarioStateExtras[m.playerIndex]
+
     if m.heldObj ~= 0 then
         mario_drop_held_object(m)
     end
@@ -906,6 +922,9 @@ local function act_air_hit_wall(m)
     if m.actionTimer <= 1 and (m.input & INPUT_A_PRESSED) ~= 0 then
         m.vel.y = 52.0
         m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
+        if e.fromWall then
+            e.twirlWalls = e.twirlWalls - 1
+        end
         return set_mario_action(m, ACT_WALL_KICK_AIR, 0)
     elseif m.forwardVel >= 38.0 then
         if m.vel.y > 0.0 then
@@ -971,6 +990,11 @@ local function mario_on_set_action(m)
         e.dashPress = 0
         e.didTwiAir = false
         e.twirlSFX = 0
+    end
+
+    if perform_air_step(m, 0) == AIR_STEP_LANDED then
+        e.twirlWalls = 2
+        e.fromWall = false
     end
 
     if m.action == ACT_WALL_SLIDE then
@@ -1298,6 +1322,7 @@ hook_mario_action(ACT_FAKE_FREEFALL, { every_frame = act_fake_freefall })
 hook_mario_action(ACT_SPIN_JUMP, { every_frame = act_spin_jump }, INT_KICK)
 hook_mario_action(ACT_SPIN_JUMP_END, { every_frame = act_spin_jump_end })
 hook_mario_action(ACT_WALL_SLIDE, { every_frame = act_wall_slide, gravity = act_wall_slide_gravity })
+hook_mario_action(ACT_CUSTOM_AIR_HIT_WALL, { every_frame = act_air_hit_wall })
 hook_mario_action(ACT_ROLL, { every_frame = act_roll}, INT_TRIP)
 hook_mario_action(ACT_AIR_DASH, { every_frame = act_air_dash}, INT_SLIDE_KICK)
 hook_mario_action(ACT_AIR_DASH_END, { every_frame = act_air_dash_end})
@@ -1307,5 +1332,3 @@ hook_mario_action(ACT_DOLPHIN_DIVE, { every_frame = act_dolphin_dive}, INT_SLIDE
 hook_mario_action(ACT_WATER_SPIN, { every_frame = act_water_spin}, INT_FAST_ATTACK_OR_SHELL)
 hook_mario_action(ACT_WATER_GROUND_POUND, { every_frame = act_water_ground_pound }, INT_GROUND_POUND)
 hook_mario_action(ACT_WATER_GROUND_POUND_LAND, { every_frame = act_water_ground_pound_land }, INT_GROUND_POUND)
-hook_mario_action(ACT_CUSTOM_AIR_HIT_WALL, { every_frame = act_air_hit_wall })
-
