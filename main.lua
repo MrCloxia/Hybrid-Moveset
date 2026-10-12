@@ -986,8 +986,29 @@ local function approach_yaw(current, target, maxTurn)
 end
 
 local function act_emote_sit(m)
-    set_mario_animation(m, CHAR_ANIM_START_SLEEP_SITTING)
-    m.marioBodyState.headAngle.x = m.intendedYaw
+    if m.actionTimer > 21 then
+        m.marioObj.header.gfx.animInfo.animAccel = -1
+
+        if (m.input & INPUT_A_PRESSED) ~= 0 or m.actionState == 1 then
+            m.marioBodyState.allowPartRotation = 0
+            m.actionState = 1
+            landing_step(m, CHAR_ANIM_WAKE_FROM_SLEEP, ACT_IDLE)
+        end
+    else
+        set_mario_animation(m, CHAR_ANIM_START_SLEEP_SITTING)
+        if m.actionTimer == 20 then
+            play_sound(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND, m.marioObj.header.gfx.cameraToObject)
+        end
+    end
+
+    local headRotLimit = 0x3F00
+    local headTarget = limit_angle(m.intendedYaw - m.faceAngle.y)
+    if headTarget > headRotLimit then headTarget = headRotLimit elseif headTarget < -headRotLimit then headTarget = -headRotLimit end
+
+    m.marioBodyState.headAngle.x = approach_yaw(m.marioBodyState.headAngle.x,-m.controller.stickY * 100, 1000)
+    m.marioBodyState.headAngle.y = approach_yaw(m.marioBodyState.headAngle.y,-m.controller.stickX * 200, 1000)
+
+    m.actionTimer = m.actionTimer + 1
 end
 
 local function before_set_mario_action(m, action)
