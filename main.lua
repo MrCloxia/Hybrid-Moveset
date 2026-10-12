@@ -30,6 +30,7 @@ ACT_DOLPHIN_DIVE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT
 ACT_WATER_SPIN = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
+ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY)
 
 -- gLevelValues.entryLevel = LEVEL_JRB--LEVEL START DEBUG
 
@@ -984,6 +985,11 @@ local function approach_yaw(current, target, maxTurn)
     return (current + diff) % 65536
 end
 
+local function act_emote_sit(m)
+    set_mario_animation(m, CHAR_ANIM_START_SLEEP_SITTING)
+    m.marioBodyState.headAngle.x = m.intendedYaw
+end
+
 local function before_set_mario_action(m, action)
     local s = gPlayerSyncTable[m.playerIndex]
     if not s.usingHybird then
@@ -1285,6 +1291,12 @@ local function mario_update(m)
         end
     end
 
+    --EMOTE SIT
+    if (m.action == ACT_CROUCHING) and (m.controller.buttonPressed & X_BUTTON) ~= 0 then
+        m.marioBodyState.allowPartRotation = 1
+        set_mario_action(m, ACT_EMOTE_SIT, 0)
+    end
+
     --DEBUG SPAWN
     if (m.controller.buttonPressed & Y_BUTTON) ~= 0 then
         --spawn_sync_object(id_bhvKingBobomb, E_MODEL_KING_BOBOMB, m.pos.x - 300, m.pos.y, m.pos.z - 300, nil)
@@ -1361,3 +1373,4 @@ hook_mario_action(ACT_DOLPHIN_DIVE, { every_frame = act_dolphin_dive}, INT_SLIDE
 hook_mario_action(ACT_WATER_SPIN, { every_frame = act_water_spin}, INT_FAST_ATTACK_OR_SHELL)
 hook_mario_action(ACT_WATER_GROUND_POUND, { every_frame = act_water_ground_pound }, INT_GROUND_POUND)
 hook_mario_action(ACT_WATER_GROUND_POUND_LAND, { every_frame = act_water_ground_pound_land }, INT_GROUND_POUND)
+hook_mario_action(ACT_EMOTE_SIT, { every_frame = act_emote_sit })
