@@ -179,6 +179,12 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.GPtWP = false
     e.didSwimDive = false
 
+    e.syncedHeadAngle = {}
+
+    e.syncedHeadAngle.x = 0
+    e.syncedHeadAngle.y = 0
+    e.syncedHeadAngle.z = 0
+
     e.grabEscape = 0
     e.grabStruggle = false
     e.lastAnaDir = 0
@@ -986,6 +992,10 @@ local function approach_yaw(current, target, maxTurn)
 end
 
 local function act_emote_sit(m)
+    stationary_ground_step(m);
+
+    local e = gMarioStateExtras[m.playerIndex]
+
     if m.actionTimer > 21 then
         m.marioObj.header.gfx.animInfo.animAccel = -1
 
@@ -1005,8 +1015,11 @@ local function act_emote_sit(m)
     local headTarget = limit_angle(m.intendedYaw - m.faceAngle.y)
     if headTarget > headRotLimit then headTarget = headRotLimit elseif headTarget < -headRotLimit then headTarget = -headRotLimit end
 
-    m.marioBodyState.headAngle.x = approach_yaw(m.marioBodyState.headAngle.x,-m.controller.stickY * 100, 1000)
-    m.marioBodyState.headAngle.y = approach_yaw(m.marioBodyState.headAngle.y,-m.controller.stickX * 200, 1000)
+    e.syncedHeadAngle.x = approach_yaw(m.marioBodyState.headAngle.x,-m.controller.stickY * 100, 1000)
+    e.syncedHeadAngle.y = approach_yaw(m.marioBodyState.headAngle.y,-m.controller.stickX * 200, 1000)
+
+    m.marioBodyState.headAngle.x = e.syncedHeadAngle.x
+    m.marioBodyState.headAngle.y = e.syncedHeadAngle.y
 
     m.actionTimer = m.actionTimer + 1
 end
