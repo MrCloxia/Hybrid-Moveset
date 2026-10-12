@@ -992,21 +992,36 @@ local function approach_yaw(current, target, maxTurn)
 end
 
 local function act_emote_sit(m)
-    stationary_ground_step(m);
-
     local e = gMarioStateExtras[m.playerIndex]
+    local step = perform_ground_step(m);
+    
 
-    if m.actionTimer > 21 then
+    if step == GROUND_STEP_LEFT_GROUND then
+        return set_mario_action(m, ACT_FREEFALL, 0)
+    else
+        if (m.input & INPUT_ABOVE_SLIDE) ~= 0 then
+            return set_mario_action(m, ACT_BEGIN_SLIDING, 0);
+        end
+    end
+
+    if (m.quicksandDepth > 30.0) then
+        return set_mario_action(m, ACT_IN_QUICKSAND, 0);
+    end
+
+    if (m.input & INPUT_A_PRESSED) ~= 0 or m.actionState == 1 then
+        m.marioBodyState.allowPartRotation = 0
+        m.actionState = 1
+        landing_step(m, CHAR_ANIM_WAKE_FROM_SLEEP, ACT_IDLE)
+        return
+    end
+
+    if m.marioObj.header.gfx.animInfo.animFrame > 21 then
         m.marioObj.header.gfx.animInfo.animAccel = -1
 
-        if (m.input & INPUT_A_PRESSED) ~= 0 or m.actionState == 1 then
-            m.marioBodyState.allowPartRotation = 0
-            m.actionState = 1
-            landing_step(m, CHAR_ANIM_WAKE_FROM_SLEEP, ACT_IDLE)
-        end
+        m.marioBodyState.allowPartRotation = 1
     else
         set_mario_animation(m, CHAR_ANIM_START_SLEEP_SITTING)
-        if m.actionTimer == 20 then
+        if m.marioObj.header.gfx.animInfo.animFrame == 20 then
             play_sound(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND, m.marioObj.header.gfx.cameraToObject)
         end
     end
@@ -1022,6 +1037,7 @@ local function act_emote_sit(m)
     m.marioBodyState.headAngle.y = e.syncedHeadAngle.y
 
     m.actionTimer = m.actionTimer + 1
+
 end
 
 local function before_set_mario_action(m, action)
@@ -1029,6 +1045,13 @@ local function before_set_mario_action(m, action)
     if not s.usingHybird then
         return action
     end
+
+    if m.action == ACT_EMOTE_SIT then
+        m.marioBodyState.allowPartRotation = 0
+        m.marioBodyState.headAngle.x = 0
+        m.marioBodyState.headAngle.y = 0
+    end
+
     return convert_actions[action] ~= nil and convert_actions[action] or action
 end
 
