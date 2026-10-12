@@ -160,7 +160,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.animFrame = 0
     e.groundPoundCooldown = 0
     e.hangSpeed = 0
-    e.fromGround = false
+    e.fromGround = true
     e.spinAngle = 0
     e.didSpin = false
     e.didAirDash = false
@@ -675,8 +675,6 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
 
     -- m.faceAngle.y = m.intendedYaw - approach_s32(m.intendedYaw - m.faceAngle.y, 0, 0x300, 0x300);
     m.marioBodyState.handState = MARIO_HAND_OPEN
-    set_mario_particle_flags(m, PARTICLE_BREATH, 0)
-
 
     if m.actionTimer == 0 then
         e.spinAngle = 0
@@ -704,7 +702,13 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     update_lava_boost_or_twirling(m)
     update_air_without_turn(m);
 
-    if (m.actionTimer % 3) == 0 and stepResult ~= GROUND_STEP_LEFT_GROUND then
+    if m.actionTimer <= 17 then
+        set_mario_particle_flags(m, PARTICLE_BREATH, 0)
+    elseif stepResult == AIR_STEP_NONE then
+        set_mario_particle_flags(m, PARTICLE_DUST, 0)
+    end
+
+    if (m.actionTimer % 3) == 0 and stepResult ~= GROUND_STEP_LEFT_GROUND and m.actionTimer <= 20 then
         play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, random_float(1, 1.45))
         e.didTwiAir = false
     end
@@ -741,14 +745,18 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
 
     if stepResult == AIR_STEP_LANDED then
         if m.actionTimer >= 25 then
-            if e.didTwiAir then
-                play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
+            if e.fromGround then
+                if e.didTwiAir then
+                    play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
+                end
+                e.didTwiAir = false
+                landing_step(m, CHAR_ANIM_TWIRL_LAND, ACT_IDLE)
+                return
+            else
+                e.twirlTimer = 0
+                e.airTime = 0
+                e.fromGround = true
             end
-            e.didTwiAir = false
-            e.twirlTimer = 0
-            e.airTime = 0
-            set_mario_action(m, ACT_TWIRL_LAND, 0)
-            return
         end
     end
 
@@ -761,13 +769,15 @@ end
 local function act_drill_down(m)--DRILLING DOWN
     local e = gMarioStateExtras[m.playerIndex]
 
-    m.forwardVel = math.min(m.forwardVel,10)
+    if not e.fromGround then
+        m.forwardVel = math.min(m.forwardVel, 10)
+    end
     m.vel.y = math.max(m.vel.y - 8, -200)
     update_air_without_turn(m);
 
     local stepResult = perform_air_step(m, 0)
     m.marioBodyState.handState = MARIO_HAND_OPEN
-    set_mario_particle_flags(m, PARTICLE_BREATH, 0)
+    set_mario_particle_flags(m, PARTICLE_BREATH | PARTICLE_DUST, 0)
 
     if m.actionTimer == 0 then
         e.fromGround = false
@@ -777,17 +787,20 @@ local function act_drill_down(m)--DRILLING DOWN
     end
 
     if stepResult == AIR_STEP_LANDED then
-        if not e.fromGround then
+        if e.fromGround then
+            landing_step(m, CHAR_ANIM_TWIRL_LAND, ACT_IDLE)
+            return
+        else
             play_mario_heavy_landing_sound(m, SOUND_ACTION_TERRAIN_HEAVY_LANDING)
             set_mario_particle_flags(m, (PARTICLE_MIST_CIRCLE | PARTICLE_HORIZONTAL_STAR), 0);
             m.faceAngle.y = m.intendedYaw
             m.squishTimer = 5
+            m.actionState = 1
 
             if (m.playerIndex == 0) then 
                 set_camera_shake_from_hit(SHAKE_GROUND_POUND) 
             end
 
-            set_mario_action(m, ACT_TWIRL_LAND, 0)
             e.fromGround = true
         end
     else
@@ -1244,7 +1257,7 @@ local function mario_update(m)
     end
 
     --TRANSITION FROM DRILL/GROUND POUND TO ROLL
-    if ((m.prevAction == ACT_DRILL_DOWN and m.action == ACT_TWIRL_LAND) or (m.action == ACT_GROUND_POUND_LAND)) and (m.input & INPUT_B_PRESSED) ~= 0 then
+    if (m.action == ACT_DRILL_DOWN and m.actionState == 1) or (m.action == ACT_GROUND_POUND_LAND) and (m.input & INPUT_B_PRESSED) ~= 0 then
         mario_set_forward_vel(m, 100)
         play_sound_with_freq_scale(SOUND_OBJ2_MRI_SPINNING, m.marioObj.header.gfx.cameraToObject, 1.8)
         set_mario_action(m, ACT_ROLL, 0)
