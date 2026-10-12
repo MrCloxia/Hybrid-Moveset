@@ -684,18 +684,6 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
 
     --SUNSHINE SPIN JUMP
     if (m.action & ACT_FLAG_AIR == 0) then
-        if not e.didTwiAir and (m.input & INPUT_A_PRESSED) ~= 0 then
-            play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
-            m.vel.y = 80
-            e.twirlSFX = 0
-            e.didTwiAir = true
-            if (m.input & INPUT_B_PRESSED) ~= 0 then
-                m.faceAngle.y = m.intendedYaw
-                mario_set_forward_vel(m, math.max(math.min(m.forwardVel + 50, 100), 50))
-                set_mario_action(m, ACT_DIVE, 0)
-                return
-            end
-        end
     end
 
     local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
@@ -757,6 +745,19 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
                 e.airTime = 0
                 e.fromGround = true
             end
+        else
+            if not e.didTwiAir and (m.input & INPUT_A_PRESSED) ~= 0 then
+                play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
+                m.vel.y = 80
+                e.twirlSFX = 0
+                e.didTwiAir = true
+                if (m.input & INPUT_B_PRESSED) ~= 0 then
+                    m.faceAngle.y = m.intendedYaw
+                    mario_set_forward_vel(m, math.max(math.min(m.forwardVel + 50, 100), 50))
+                    set_mario_action(m, ACT_DIVE, 0)
+                    return
+                end
+            end
         end
     end
 
@@ -788,7 +789,16 @@ local function act_drill_down(m)--DRILLING DOWN
 
     if stepResult == AIR_STEP_LANDED then
         if e.fromGround then
+            if (m.input & INPUT_B_PRESSED) ~= 0 then
+                m.squishTimer = 0
+                mario_set_forward_vel(m, 100)
+                play_sound_with_freq_scale(SOUND_OBJ2_MRI_SPINNING, m.marioObj.header.gfx.cameraToObject, 1.8)
+                set_mario_action(m, ACT_ROLL, 0)
+                return
+            end
+
             landing_step(m, CHAR_ANIM_TWIRL_LAND, ACT_IDLE)
+            -- m.actionState = 1
             return
         else
             play_mario_heavy_landing_sound(m, SOUND_ACTION_TERRAIN_HEAVY_LANDING)
@@ -991,23 +1001,19 @@ local function mario_on_set_action(m)
         e.savedWallSlide = false
     end
 
-    if (m.action & ACT_FLAG_AIR) ~= 0 then
-        if e.didSpin then
-            e.fromGround = false
-        end
-    end
-    
-    if (m.action & ACT_FLAG_AIR) == 0 then
+    if (m.floorHeight == m.pos.y) then
         e.didAirDash = false
         e.didSpin = false
         e.dashPress = 0
         e.didTwiAir = false
         e.twirlSFX = 0
-    end
 
-    if perform_air_step(m, 0) == AIR_STEP_LANDED then
         e.twirlWalls = 2
         e.fromWall = false
+    else
+        if e.didSpin then
+            e.fromGround = false
+        end
     end
 
     if m.action == ACT_WALL_SLIDE then
@@ -1105,7 +1111,7 @@ local function mario_update(m)
                 e.grabEscape = e.grabEscape + 1
                 poundSFXs = {SOUND_GENERAL_SHORT_POUND1, SOUND_GENERAL_SHORT_POUND2, SOUND_GENERAL_SHORT_POUND3, SOUND_GENERAL_SHORT_POUND4, SOUND_GENERAL_SHORT_POUND5, SOUND_GENERAL_SHORT_POUND6}
                 play_sound_with_freq_scale(poundSFXs[math.random(1, 6)], m.marioObj.header.gfx.cameraToObject, random_float(0.63, 1.33))
-                if e.grabEscape > 1 then
+                if e.grabEscape > 1 and m.playerIndex == 0 then
                     play_sound_with_freq_scale(SOUND_MENU_YOSHI_GAIN_LIVES, m.marioObj.header.gfx.cameraToObject, (e.grabEscape / 100) + 0.98)
                 end
                 if e.grabEscape > 0 and e.grabEscape % 5 == 0 then
@@ -1224,7 +1230,7 @@ local function mario_update(m)
             analogStick = analogStick + 0x10000
         end
         e.twirlYaw = stickYaw
-        e.twirlAmount = e.twirlAmount + analogStick * ((m.action & ACT_FLAG_AIR == 0) and 1.0 or 1.4)
+        e.twirlAmount = e.twirlAmount + analogStick * ((m.action & ACT_FLAG_AIR == 0) and 1.0 or 1.25)
         e.twirlTimer = e.twirlTimer + 1
 
         if math.abs(e.twirlAmount) >= 0x10000 then
@@ -1257,7 +1263,7 @@ local function mario_update(m)
     end
 
     --TRANSITION FROM DRILL/GROUND POUND TO ROLL
-    if (m.action == ACT_DRILL_DOWN and m.actionState == 1) or (m.action == ACT_GROUND_POUND_LAND) and (m.input & INPUT_B_PRESSED) ~= 0 then
+    if (m.action == ACT_GROUND_POUND_LAND) and (m.input & INPUT_B_PRESSED) ~= 0 then
         mario_set_forward_vel(m, 100)
         play_sound_with_freq_scale(SOUND_OBJ2_MRI_SPINNING, m.marioObj.header.gfx.cameraToObject, 1.8)
         set_mario_action(m, ACT_ROLL, 0)
