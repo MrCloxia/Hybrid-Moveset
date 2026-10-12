@@ -161,6 +161,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.groundPoundCooldown = 0
     e.hangSpeed = 0
     e.fromGround = true
+    e.spinCooldown = 0
     e.spinAngle = 0
     e.didSpin = false
     e.didAirDash = false
@@ -530,12 +531,15 @@ local function act_spin_jump(m)--GALAXY SPIN / SPIN JUMP
 end
 
 local function act_spin_jump_end(m)--GALAXY SPIN END / SPIN JUMP END
-    local stepResult = perform_air_step(m, 0)
+    local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB )
     local e = gMarioStateExtras[m.playerIndex]
     set_mario_animation(m, CHAR_ANIM_GENERAL_FALL)
     m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y)
 
-    if stepResult == AIR_STEP_NONE and e.fromGround or stepResult == AIR_STEP_LANDED then
+    if stepResult == AIR_STEP_GRABBED_LEDGE then
+        e.didSpin = false
+        set_mario_action(m, ACT_LEDGE_GRAB, 0)
+    elseif stepResult == AIR_STEP_NONE and e.fromGround or stepResult == AIR_STEP_LANDED then
         set_mario_action(m, ACT_FREEFALL_LAND, 0)
         return
     end
@@ -1076,6 +1080,10 @@ local function mario_update(m)
         e.groundPoundCooldown = e.groundPoundCooldown - 1
     end
 
+    if e.spinCooldown > 0 then
+        e.spinCooldown = e.spinCooldown - 1
+    end
+
     --ESCAPE OUT OF BEING GRABBED
     if m.action == ACT_GRABBED then
         if m.heldByObj ~= nil then
@@ -1174,8 +1182,9 @@ local function mario_update(m)
     end
 
     --GALAXY SPIN / SPIN JUMP
-    if SPINACTIONS[m.action] and ((m.controller.buttonPressed & X_BUTTON) ~= 0) then
-        if not e.didSpin then 
+    if SPINACTIONS[m.action] and ((m.controller.buttonPressed & X_BUTTON) ~= 0) and e.spinCooldown <= 0 then
+        if not e.didSpin then
+            e.spinCooldown = 30
             if GROUNDACTIONS[m.action] then
                 m.vel.y = 25
                 e.fromGround = true
