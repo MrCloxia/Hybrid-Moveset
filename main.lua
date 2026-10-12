@@ -679,11 +679,11 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     if m.actionTimer == 0 then
         e.spinAngle = 0
         e.spinSpeed = 10
+        e.didTwiAir = false
+        e.twirlTimer = 0
+        e.twirlSFX = 0
+        e.airTime = 0
         set_mario_animation(m, CHAR_ANIM_TWIRL)
-    end
-
-    --SUNSHINE SPIN JUMP
-    if (m.action & ACT_FLAG_AIR == 0) then
     end
 
     local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
@@ -721,6 +721,7 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
             play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 3 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
         end
         e.didTwiAir = true
+
         if (m.input & INPUT_Z_DOWN) ~= 0 then
             e.didTwiAir = false
             e.twirlTimer = 0
