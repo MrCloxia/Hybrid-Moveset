@@ -1101,8 +1101,11 @@ local function act_emote_sit(m)--EMOTE SIT
         end
     end
 
-    if (m.controller.buttonPressed & X_BUTTON) ~= 0 and m.actionState ~= 1 and m.actionTimer >= 35 and not e.isLaying then
+    if (m.controller.buttonPressed & X_BUTTON) ~= 0 and m.actionState ~= 1 and m.actionTimer >= 35 then
         m.actionState = 1
+    end
+
+    if m.actionState == 1 and not e.isLaying then
         m.marioObj.header.gfx.animInfo.animAccel = 1
         e.isLaying = true
         set_mario_animation(m, CHAR_ANIM_SLEEP_START_LYING)
