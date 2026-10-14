@@ -1014,7 +1014,7 @@ local function act_emote_sit(m)--EMOTE SIT
     local step = perform_ground_step(m);
 
     --PANTING / LOW HEALTH VERSION
-    if m.health <= 0x200 then
+    if m.health < 0x300 then
         if e.isCoughing then
             m.marioBodyState.eyeState = MARIO_EYES_CLOSED
         else
