@@ -184,6 +184,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.syncedHeadAngle.x = 0
     e.syncedHeadAngle.y = 0
     e.syncedHeadAngle.z = 0
+    e.isLaying = false
 
     e.grabEscape = 0
     e.grabStruggle = false
@@ -991,7 +992,7 @@ local function approach_yaw(current, target, maxTurn)
     return (current + diff) % 65536
 end
 
-local function act_emote_sit(m)
+local function act_emote_sit(m)--EMOTE SIT
     local e = gMarioStateExtras[m.playerIndex]
     local step = perform_ground_step(m);
     
@@ -1008,36 +1009,57 @@ local function act_emote_sit(m)
         return set_mario_action(m, ACT_IN_QUICKSAND, 0);
     end
 
-    if (m.input & INPUT_A_PRESSED) ~= 0 or m.actionState == 1 then
+    if (m.input & INPUT_A_PRESSED) ~= 0 or m.actionState > 2 then
         m.marioBodyState.allowPartRotation = 0
-        m.actionState = 1
-        landing_step(m, CHAR_ANIM_WAKE_FROM_SLEEP, ACT_IDLE)
+        m.marioBodyState.headAngle.x = 0
+        m.marioBodyState.headAngle.y = 0
+        e.syncedHeadAngle.x = 0
+        e.syncedHeadAngle.y = 0
+        landing_step(m, e.isLaying and CHAR_ANIM_WAKE_FROM_LYING or CHAR_ANIM_WAKE_FROM_SLEEP, ACT_IDLE)
+        m.actionState = -1--We don't want Mario to instantly sleep after getting up.
         return
     end
 
-    if m.marioObj.header.gfx.animInfo.animFrame > 21 then
-        m.marioObj.header.gfx.animInfo.animAccel = -1
+    if m.actionState == 0 then
+        if m.marioObj.header.gfx.animInfo.animFrame > 21 then
+            m.marioObj.header.gfx.animInfo.animAccel = -1
 
-        m.marioBodyState.allowPartRotation = 1
-    else
-        set_mario_animation(m, CHAR_ANIM_START_SLEEP_SITTING)
-        if m.marioObj.header.gfx.animInfo.animFrame == 20 then
-            play_sound(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND, m.marioObj.header.gfx.cameraToObject)
+            m.marioBodyState.allowPartRotation = 1
+        else
+            set_mario_animation(m, CHAR_ANIM_START_SLEEP_SITTING)
+            if m.marioObj.header.gfx.animInfo.animFrame == 20 then
+                play_sound(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND, m.marioObj.header.gfx.cameraToObject)
+            end
         end
+    else
+        if m.marioObj.header.gfx.animInfo.animFrame == 27 and m.actionState == 1 then
+            play_sound(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND, m.marioObj.header.gfx.cameraToObject)
+        elseif m.marioObj.header.gfx.animInfo.animFrame == 37 then
+            set_mario_animation(m, CHAR_ANIM_SLEEP_LYING)
+            m.actionState = 2
+        end
+    end
+
+    if (m.controller.buttonPressed & X_BUTTON) ~= 0 and m.actionState ~= 1 and m.actionTimer >= 10 and not e.isLaying then
+        m.actionState = 1
+        m.marioObj.header.gfx.animInfo.animAccel = 1
+        e.isLaying = true
+        set_mario_animation(m, CHAR_ANIM_SLEEP_START_LYING)
     end
 
     local headRotLimit = 0x3F00
     local headTarget = limit_angle(m.intendedYaw - m.faceAngle.y)
     if headTarget > headRotLimit then headTarget = headRotLimit elseif headTarget < -headRotLimit then headTarget = -headRotLimit end
 
-    e.syncedHeadAngle.x = approach_yaw(m.marioBodyState.headAngle.x,-m.controller.stickY * 100, 1000)
-    e.syncedHeadAngle.y = approach_yaw(m.marioBodyState.headAngle.y,-m.controller.stickX * 200, 1000)
+    if (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
+        e.syncedHeadAngle.x = approach_yaw(m.marioBodyState.headAngle.x,-m.controller.stickY * 100, 1000)
+        e.syncedHeadAngle.y = approach_yaw(m.marioBodyState.headAngle.y,-m.controller.stickX * 200, 1000)
+    end
 
     m.marioBodyState.headAngle.x = e.syncedHeadAngle.x
     m.marioBodyState.headAngle.y = e.syncedHeadAngle.y
 
     m.actionTimer = m.actionTimer + 1
-
 end
 
 local function before_set_mario_action(m, action)
@@ -1349,8 +1371,10 @@ local function mario_update(m)
     end
 
     --EMOTE SIT
-    if (m.action == ACT_CROUCHING) and (m.controller.buttonPressed & X_BUTTON) ~= 0 then
+    if (m.action == ACT_CROUCHING) and (m.controller.buttonPressed & X_BUTTON) ~= 0 and m.quicksandDepth < 30.0 then
         m.marioBodyState.allowPartRotation = 1
+        m.actionState = 0
+        e.isLaying = false
         set_mario_action(m, ACT_EMOTE_SIT, 0)
     end
 
