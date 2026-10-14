@@ -1,6 +1,6 @@
 -- name:\\#ffdd00\\Hybrid \\#ffa600\\Moveset
 -- incompatible: moveset
--- description: Placeholder Description
+-- description: \\#ffdd00\\Hybrid \\#ffa600\\Moveset\n\\#ffffff\\created by: \\#ff91ca\\Sibottle\\#ffffff\\ and \\#46ff40\\MrCloxia\n\n\\#ffffff\\A moveset that mixes the best moves from various Super Mario games while also adding its own flairs!\n\nScript built on \\#ff5400\\MrCho\\#00ff00\\quin7\\#ffffff\\'s Moveset 64 Land
 
 ------------------------------
 ----- Functions ---------
