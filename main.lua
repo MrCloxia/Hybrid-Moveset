@@ -32,7 +32,7 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY)
 
--- gLevelValues.entryLevel = LEVEL_JRB--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_LLL--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -518,6 +518,11 @@ local function act_spin_jump(m)--GALAXY SPIN / SPIN JUMP
         e.spinSpeed = 1
     end
 
+    if stepResult == AIR_STEP_HIT_LAVA_WALL then
+        lava_boost_on_wall(m)
+        return
+    end
+
     if e.spinSpeed > 0.02 then
         if stepResult == AIR_STEP_HIT_WALL and not e.fromGround then
             stop_sounds_from_source(m.marioObj.header.gfx.cameraToObject)
@@ -539,10 +544,15 @@ local function act_spin_jump(m)--GALAXY SPIN / SPIN JUMP
 end
 
 local function act_spin_jump_end(m)--GALAXY SPIN END / SPIN JUMP END
-    local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB )
+    local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
     local e = gMarioStateExtras[m.playerIndex]
     set_mario_animation(m, CHAR_ANIM_GENERAL_FALL)
     m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y)
+
+    if stepResult == AIR_STEP_HIT_LAVA_WALL then
+        lava_boost_on_wall(m)
+        return
+    end
 
     if stepResult == AIR_STEP_GRABBED_LEDGE then
         e.didSpin = false
@@ -701,6 +711,11 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
     update_lava_boost_or_twirling(m)
     update_air_without_turn(m);
+
+    if stepResult == AIR_STEP_HIT_LAVA_WALL then
+        lava_boost_on_wall(m)
+        return
+    end
 
     if m.actionTimer <= 17 then
         set_mario_particle_flags(m, PARTICLE_BREATH, 0)
