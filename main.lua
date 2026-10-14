@@ -185,6 +185,8 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.syncedHeadAngle.y = 0
     e.syncedHeadAngle.z = 0
     e.isLaying = false
+    e.coughTimer = 0
+    e.isCoughing = false
 
     e.grabEscape = 0
     e.grabStruggle = false
@@ -1010,7 +1012,49 @@ end
 local function act_emote_sit(m)--EMOTE SIT
     local e = gMarioStateExtras[m.playerIndex]
     local step = perform_ground_step(m);
-    
+
+    --PANTING / LOW HEALTH VERSION
+    if m.health <= 0x200 then
+        if e.isCoughing then
+            m.marioBodyState.eyeState = MARIO_EYES_CLOSED
+        else
+            m.marioBodyState.eyeState = MARIO_EYES_HALF_CLOSED
+        end
+        e.coughTimer = e.coughTimer + 1
+    end
+
+    local coughFrames = {
+    [225] = true,
+    [235] = true,
+    [250] = true,
+    [258] = true,
+    [271] = true,
+    [280] = true
+    }
+
+    if e.coughTimer == 220 then
+        painFelt = math.random(1, 2)
+    end
+
+    if coughFrames[e.coughTimer] then
+        if e.coughTimer == 225 and painFelt == 1 then--PANTING
+            play_character_sound_offset(m, CHAR_SOUND_PANTING, 1)
+            set_mario_particle_flags(m, PARTICLE_BREATH, 0)
+            e.isCoughing = true
+        elseif painFelt == 2 then--COUGHING
+            coughVoices = {CHAR_SOUND_COUGHING1, CHAR_SOUND_COUGHING2, CHAR_SOUND_COUGHING3}
+            selVoice = math.random(1, #coughVoices)
+            play_character_sound_offset(m, coughVoices[selVoice], 1)
+            set_mario_particle_flags(m, PARTICLE_BREATH, 0)
+            e.isCoughing = true
+        end
+    end
+
+    if (e.coughTimer == 270 and painFelt == 1) or (e.coughTimer == 300 and painFelt == 2) then
+        e.isCoughing = false
+    elseif e.coughTimer == 800 then
+        e.coughTimer = 0
+    end
 
     if step == GROUND_STEP_LEFT_GROUND then
         return set_mario_action(m, ACT_FREEFALL, 0)
@@ -1028,6 +1072,8 @@ local function act_emote_sit(m)--EMOTE SIT
         m.marioBodyState.allowPartRotation = 0
         m.marioBodyState.headAngle.x = 0
         m.marioBodyState.headAngle.y = 0
+        m.marioBodyState.torsoAngle.x = 0
+        m.marioBodyState.torsoAngle.y = 0
         e.syncedHeadAngle.x = 0
         e.syncedHeadAngle.y = 0
         landing_step(m, e.isLaying and CHAR_ANIM_WAKE_FROM_LYING or CHAR_ANIM_WAKE_FROM_SLEEP, ACT_IDLE)
@@ -1071,6 +1117,11 @@ local function act_emote_sit(m)--EMOTE SIT
         e.syncedHeadAngle.y = approach_yaw(m.marioBodyState.headAngle.y,-m.controller.stickX * 200, 1000)
     end
 
+    local torsoTilt = math.sin(m.actionTimer * 0.043) * 0x300
+    if m.actionState == 0 then
+        vec3s_set(m.marioBodyState.torsoAngle, torsoTilt, 0, 0)
+    end
+
     m.marioBodyState.headAngle.x = e.syncedHeadAngle.x
     m.marioBodyState.headAngle.y = e.syncedHeadAngle.y
 
@@ -1087,6 +1138,8 @@ local function before_set_mario_action(m, action)
         m.marioBodyState.allowPartRotation = 0
         m.marioBodyState.headAngle.x = 0
         m.marioBodyState.headAngle.y = 0
+        m.marioBodyState.torsoAngle.x = 0
+        m.marioBodyState.torsoAngle.y = 0
     end
 
     return convert_actions[action] ~= nil and convert_actions[action] or action
@@ -1224,8 +1277,8 @@ local function mario_update(m)
                     play_sound_with_freq_scale(SOUND_MENU_YOSHI_GAIN_LIVES, m.marioObj.header.gfx.cameraToObject, (e.grabEscape / 100) + 0.98)
                 end
                 if e.grabEscape > 0 and e.grabEscape % 5 == 0 then
-                    selVoice = math.random(1, 3)
                     strugVoices = {CHAR_SOUND_EEUH, CHAR_SOUND_UH, CHAR_SOUND_HRMM}
+                    selVoice = math.random(1, #strugVoices)
                     play_mario_sound(m, 0, strugVoices[selVoice])
                 end
                 set_camera_shake_from_hit(SHAKE_SHOCK)
@@ -1390,11 +1443,14 @@ local function mario_update(m)
         m.marioBodyState.allowPartRotation = 1
         m.actionState = 0
         e.isLaying = false
+        e.coughTimer = 0
+        e.isCoughing = false
         set_mario_action(m, ACT_EMOTE_SIT, 0)
     end
 
-    --DEBUG SPAWN
+    --DEBUG FUNCTION
     if (m.controller.buttonPressed & Y_BUTTON) ~= 0 then
+        --m.health = 0x200
         --spawn_sync_object(id_bhvKingBobomb, E_MODEL_KING_BOBOMB, m.pos.x - 300, m.pos.y, m.pos.z - 300, nil)
         --set_water_level(0, 10000, true)
     end
