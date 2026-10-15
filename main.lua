@@ -180,14 +180,21 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.didSwimDive = false
 
     e.syncedHeadAngle = {}
-
     e.syncedHeadAngle.x = 0
     e.syncedHeadAngle.y = 0
     e.syncedHeadAngle.z = 0
     e.isLaying = false
-    e.coughTimer = 0
     e.isCoughing = false
-    e.painFelt = 0
+    s.coughTimer = 0
+    s.painFelt = 0
+    e.coughMoments = {
+    [225] = true,
+    [235] = true,
+    [250] = true,
+    [258] = true,
+    [271] = true,
+    [280] = true
+    }
 
     e.grabEscape = 0
     e.grabStruggle = false
@@ -1012,6 +1019,7 @@ end
 
 local function act_emote_sit(m)--EMOTE SIT
     local e = gMarioStateExtras[m.playerIndex]
+    local s = gPlayerSyncTable[m.playerIndex]
     local step = perform_ground_step(m);
 
     --PANTING / LOW HEALTH VERSION
@@ -1021,7 +1029,7 @@ local function act_emote_sit(m)--EMOTE SIT
         else
             m.marioBodyState.eyeState = MARIO_EYES_HALF_CLOSED
         end
-        e.coughTimer = e.coughTimer + 1
+        s.coughTimer = s.coughTimer + 1
     end
 
     if m.actionTimer == 0 then
@@ -1029,25 +1037,16 @@ local function act_emote_sit(m)--EMOTE SIT
         m.actionState = 0
     end
 
-    local coughFrames = {
-    [225] = true,
-    [235] = true,
-    [250] = true,
-    [258] = true,
-    [271] = true,
-    [280] = true
-    }
-
-    if e.coughTimer == 220 then
-        e.painFelt = math.random(1, 2)
+    if s.coughTimer == 220 then
+        s.painFelt = math.random(1, 2)
     end
 
-    if coughFrames[e.coughTimer] then
-        if e.coughTimer == 225 and e.painFelt == 1 then--PANTING
+    if e.coughMoments[s.coughTimer] then
+        if s.coughTimer == 225 and s.painFelt == 1 then--PANTING
             play_character_sound_offset(m, CHAR_SOUND_PANTING, 1)
             set_mario_particle_flags(m, PARTICLE_BREATH, 0)
             e.isCoughing = true
-        elseif e.painFelt == 2 then--COUGHING
+        elseif s.painFelt == 2 then--COUGHING
             coughVoices = {CHAR_SOUND_COUGHING1, CHAR_SOUND_COUGHING2, CHAR_SOUND_COUGHING3}
             selVoice = math.random(1, #coughVoices)
             play_character_sound_offset(m, coughVoices[selVoice], 1)
@@ -1056,10 +1055,10 @@ local function act_emote_sit(m)--EMOTE SIT
         end
     end
 
-    if (e.coughTimer == 270 and e.painFelt == 1) or (e.coughTimer == 300 and e.painFelt == 2) then
+    if (s.coughTimer == 270 and s.painFelt == 1) or (s.coughTimer == 300 and s.painFelt == 2) then
         e.isCoughing = false
-    elseif e.coughTimer == 800 then
-        e.coughTimer = 0
+    elseif s.coughTimer == 800 then
+        s.coughTimer = 0
     end
 
     if step == GROUND_STEP_LEFT_GROUND then
@@ -1144,6 +1143,7 @@ end
 
 local function before_set_mario_action(m, action)
     local s = gPlayerSyncTable[m.playerIndex]
+    local e = gMarioStateExtras[m.playerIndex]
     if not s.usingHybird then
         return action
     end
@@ -1154,6 +1154,8 @@ local function before_set_mario_action(m, action)
         m.marioBodyState.headAngle.y = 0
         m.marioBodyState.torsoAngle.x = 0
         m.marioBodyState.torsoAngle.y = 0
+        e.syncedHeadAngle.x = 0
+        e.syncedHeadAngle.y = 0
     end
 
     return convert_actions[action] ~= nil and convert_actions[action] or action
@@ -1457,7 +1459,7 @@ local function mario_update(m)
         m.marioBodyState.allowPartRotation = 1
         m.actionState = 0
         e.isLaying = false
-        e.coughTimer = 0
+        s.coughTimer = 0
         e.isCoughing = false
         set_mario_action(m, ACT_EMOTE_SIT, 0)
     end
