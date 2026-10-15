@@ -187,6 +187,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.isLaying = false
     e.coughTimer = 0
     e.isCoughing = false
+    e.painFelt = 0
 
     e.grabEscape = 0
     e.grabStruggle = false
@@ -1033,15 +1034,15 @@ local function act_emote_sit(m)--EMOTE SIT
     }
 
     if e.coughTimer == 220 then
-        painFelt = math.random(1, 2)
+        e.painFelt = math.random(1, 2)
     end
 
     if coughFrames[e.coughTimer] then
-        if e.coughTimer == 225 and painFelt == 1 then--PANTING
+        if e.coughTimer == 225 and e.painFelt == 1 then--PANTING
             play_character_sound_offset(m, CHAR_SOUND_PANTING, 1)
             set_mario_particle_flags(m, PARTICLE_BREATH, 0)
             e.isCoughing = true
-        elseif painFelt == 2 then--COUGHING
+        elseif e.painFelt == 2 then--COUGHING
             coughVoices = {CHAR_SOUND_COUGHING1, CHAR_SOUND_COUGHING2, CHAR_SOUND_COUGHING3}
             selVoice = math.random(1, #coughVoices)
             play_character_sound_offset(m, coughVoices[selVoice], 1)
@@ -1050,7 +1051,7 @@ local function act_emote_sit(m)--EMOTE SIT
         end
     end
 
-    if (e.coughTimer == 270 and painFelt == 1) or (e.coughTimer == 300 and painFelt == 2) then
+    if (e.coughTimer == 270 and e.painFelt == 1) or (e.coughTimer == 300 and e.painFelt == 2) then
         e.isCoughing = false
     elseif e.coughTimer == 800 then
         e.coughTimer = 0
@@ -1068,7 +1069,7 @@ local function act_emote_sit(m)--EMOTE SIT
         return set_mario_action(m, ACT_IN_QUICKSAND, 0);
     end
 
-    if (m.input & INPUT_A_PRESSED) ~= 0 or m.actionState > 2 then
+    if ((m.input & INPUT_A_PRESSED) ~= 0 or (m.input & INPUT_B_PRESSED) ~= 0) or m.actionState > 2 then
         m.marioBodyState.allowPartRotation = 0
         m.marioBodyState.headAngle.x = 0
         m.marioBodyState.headAngle.y = 0
@@ -1083,8 +1084,7 @@ local function act_emote_sit(m)--EMOTE SIT
 
     if m.actionState == 0 then
         if m.marioObj.header.gfx.animInfo.animFrame > 21 then
-            m.marioObj.header.gfx.animInfo.animAccel = -1
-
+            set_mario_anim_with_accel(m, CHAR_ANIM_START_SLEEP_SITTING, -1)
             m.marioBodyState.allowPartRotation = 1
         else
             set_mario_animation(m, CHAR_ANIM_START_SLEEP_SITTING)
@@ -1093,22 +1093,17 @@ local function act_emote_sit(m)--EMOTE SIT
             end
         end
     else
-        if m.marioObj.header.gfx.animInfo.animFrame == 27 and m.actionState == 1 then
+        if m.marioObj.header.gfx.animInfo.animFrame == 27 and m.marioObj.header.gfx.animInfo.animID == 134 then
             play_sound(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND, m.marioObj.header.gfx.cameraToObject)
-        elseif m.marioObj.header.gfx.animInfo.animFrame == 37 then
+        elseif m.marioObj.header.gfx.animInfo.animFrame == 37 and e.isLaying then
             set_mario_animation(m, CHAR_ANIM_SLEEP_LYING)
-            m.actionState = 2
         end
     end
 
-    if (m.controller.buttonPressed & X_BUTTON) ~= 0 and m.actionState ~= 1 and m.actionTimer >= 35 then
-        m.actionState = 1
-    end
-
-    if m.actionState == 1 and not e.isLaying then
-        m.marioObj.header.gfx.animInfo.animAccel = 1
-        e.isLaying = true
+    if (m.controller.buttonPressed & X_BUTTON) ~= 0 and not e.isLaying and m.actionTimer >= 35 then
         set_mario_animation(m, CHAR_ANIM_SLEEP_START_LYING)
+        m.actionState = 1
+        e.isLaying = true
     end
 
     local headRotLimit = 0x3F00
