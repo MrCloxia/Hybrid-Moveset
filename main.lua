@@ -1024,6 +1024,11 @@ local function act_emote_sit(m)--EMOTE SIT
         e.coughTimer = e.coughTimer + 1
     end
 
+    if m.actionTimer == 0 then
+        e.isLaying = false
+        m.actionState = 0
+    end
+
     local coughFrames = {
     [225] = true,
     [235] = true,
@@ -1100,27 +1105,38 @@ local function act_emote_sit(m)--EMOTE SIT
         end
     end
 
-    if (m.controller.buttonPressed & X_BUTTON) ~= 0 and not e.isLaying and m.actionTimer >= 35 then
-        set_mario_animation(m, CHAR_ANIM_SLEEP_START_LYING)
+    if e.isLaying and m.actionState ~= 1 then
         m.actionState = 1
+        set_mario_animation(m, CHAR_ANIM_SLEEP_START_LYING)
+    end
+
+    if (m.controller.buttonPressed & X_BUTTON) ~= 0 and not e.isLaying and m.actionTimer >= 35 then
         e.isLaying = true
+        set_mario_animation(m, CHAR_ANIM_SLEEP_START_LYING)
     end
 
     local headRotLimit = 0x3F00
-    local headTarget = limit_angle(m.intendedYaw - m.faceAngle.y)
-    if headTarget > headRotLimit then headTarget = headRotLimit elseif headTarget < -headRotLimit then headTarget = -headRotLimit end
 
     if (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
-        e.syncedHeadAngle.x = approach_yaw(m.marioBodyState.headAngle.x,-m.controller.stickY * 100, 1000)
-        e.syncedHeadAngle.y = approach_yaw(m.marioBodyState.headAngle.y,-m.controller.stickX * 200, 1000)
+        if (m.controller.stickX > 0) then
+            e.syncedHeadAngle.y = approach_yaw(e.syncedHeadAngle.y,-headRotLimit, math.abs(m.controller.stickX * 20))
+        else
+            e.syncedHeadAngle.y = approach_yaw(e.syncedHeadAngle.y,headRotLimit, math.abs(m.controller.stickX * 20))
+        end
+
+        if (m.controller.stickY > 0) then
+            e.syncedHeadAngle.x = approach_yaw(e.syncedHeadAngle.x,-headRotLimit/2, math.abs(m.controller.stickY * 20))
+        else
+            e.syncedHeadAngle.x = approach_yaw(e.syncedHeadAngle.x,headRotLimit/2, math.abs(m.controller.stickY * 20))
+        end
     end
 
     local torsoTilt = math.sin(m.actionTimer * 0.043) * 0x300
     if m.actionState == 0 then
-        vec3s_set(m.marioBodyState.torsoAngle, torsoTilt, 0, 0)
+        m.marioBodyState.torsoAngle.x = limit_angle(torsoTilt)
     end
 
-    m.marioBodyState.headAngle.x = e.syncedHeadAngle.x
+    m.marioBodyState.headAngle.x = e.syncedHeadAngle.x - torsoTilt
     m.marioBodyState.headAngle.y = e.syncedHeadAngle.y
 
     m.actionTimer = m.actionTimer + 1
