@@ -1102,17 +1102,17 @@ local function act_emote_sit(m)--EMOTE SIT
             play_sound(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND, m.marioObj.header.gfx.cameraToObject)
         elseif m.marioObj.header.gfx.animInfo.animFrame == 37 and e.isLaying then
             set_mario_animation(m, CHAR_ANIM_SLEEP_LYING)
+        elseif m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_SLEEP_LYING then
+            set_mario_animation(m, CHAR_ANIM_SLEEP_START_LYING)
         end
     end
 
     if e.isLaying and m.actionState ~= 1 then
         m.actionState = 1
-        set_mario_animation(m, CHAR_ANIM_SLEEP_START_LYING)
     end
 
     if (m.controller.buttonPressed & X_BUTTON) ~= 0 and not e.isLaying and m.actionTimer >= 35 then
         e.isLaying = true
-        set_mario_animation(m, CHAR_ANIM_SLEEP_START_LYING)
     end
 
     local headRotLimit = 0x3F00
