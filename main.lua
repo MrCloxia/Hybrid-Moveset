@@ -1355,6 +1355,7 @@ local function mario_update(m)
     if m.action == ACT_GROUND_POUND_LAND and (m.input & INPUT_A_PRESSED) ~= 0 then
         if e.groundPoundCooldown <= 0 then
             set_mario_action(m, ACT_TRIPLE_JUMP, 0)
+            play_mario_sound(m, 0, CHAR_SOUND_TWIRL_BOUNCE)
             m.faceAngle.y = m.intendedYaw
             m.vel.y = 70.0
             e.groundPoundCooldown = 0
