@@ -42,11 +42,10 @@ local ANGLE_QUEUE_SIZE = 9
 local SPIN_TIMER_SUCCESSFUL_INPUT = 4
 
 local SPINACTIONS = {
-    [ACT_IDLE] = true,
-    [ACT_WALKING] = true,
     [ACT_JUMP] = true,
     [ACT_DOUBLE_JUMP] = true,
     [ACT_TRIPLE_JUMP] = true,
+    [ACT_SPECIAL_TRIPLE_JUMP] = true,
     [ACT_LONG_JUMP] = true,
     [ACT_JUMP_KICK] = true,
     [ACT_SIDE_FLIP] = true,
@@ -59,8 +58,7 @@ local SPINACTIONS = {
     [ACT_FLYING] = true,
     [ACT_WATER_JUMP] = true,
     [ACT_AIR_DASH_END] = true,
-    [ACT_BUTT_SLIDE_AIR] = true,
-    [ACT_PANTING] = true
+    [ACT_BUTT_SLIDE_AIR] = true
 }
 
 local AIRDASHACTIONS = {
@@ -108,7 +106,14 @@ local WATERACTIONS = {
 local GROUNDACTIONS = {
     [ACT_IDLE] = true,
     [ACT_WALKING] = true,
-    [ACT_PANTING] = true
+    [ACT_PANTING] = true,
+    [ACT_JUMP_LAND] = true,
+    [ACT_DOUBLE_JUMP_LAND] = true,
+    [ACT_TRIPLE_JUMP_LAND] = true,
+    [ACT_BACKFLIP_LAND] = true,
+    [ACT_SIDE_FLIP_LAND] = true,
+    [ACT_FREEFALL_LAND] = true,
+    [ACT_QUICKSAND_JUMP_LAND] = true
 }
 
 local convert_actions = {
@@ -334,7 +339,7 @@ local function act_water_spin(m)--GALAXY SWIM / SPIN SWIM
 
     e.spinSpeed = e.spinSpeed * 0.78
     set_mario_animation(m, CHAR_ANIM_START_TWIRL)
-    set_mario_particle_flags(m, PARTICLE_SPARKLES, 0)
+    set_mario_particle_flags(m, PARTICLE_SPARKLES | PARTICLE_PLUNGE_BUBBLE, 0)
 
     if m.actionTimer > 20 then
         if e.spinBufferTimer > 0 then
@@ -504,7 +509,7 @@ local function act_dolphin_dive(m)--DOLPHIN DIVE
     m.actionTimer = m.actionTimer + 1
 end
 
-local function act_spin_jump(m)--GALAXY SPIN / SPIN JUMP
+local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
     if not m or m.playerIndex == nil or not gMarioStateExtras[m.playerIndex] then
         return false
     end
@@ -513,23 +518,32 @@ local function act_spin_jump(m)--GALAXY SPIN / SPIN JUMP
     m.marioBodyState.handState = MARIO_HAND_OPEN
     update_air_without_turn(m);
 
-    if stepResult == AIR_STEP_LANDED then
-        if e.fromGround then
-            set_mario_action(m, ACT_IDLE, 0)
-            play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
-            return
-        else
-            set_mario_action(m, ACT_FREEFALL_LAND, 0)
-        end
-        return
-    end
-
     if m.actionTimer == 0 then
         e.spinSpeed = 1
     end
 
     if stepResult == AIR_STEP_HIT_LAVA_WALL then
         lava_boost_on_wall(m)
+        return
+    end
+
+    if stepResult == AIR_STEP_LANDED then
+        if e.fromGround then
+            if m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_TWIRL_LAND and (m.input & INPUT_NONZERO_ANALOG) == 0 then
+                play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
+                set_mario_animation(m, CHAR_ANIM_TWIRL_LAND)
+            elseif m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_TWIRL_LAND then
+                m.forwardVel = 0
+            elseif (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
+                set_mario_action(m, ACT_WALKING, 0)
+            end
+
+            if m.marioObj.header.gfx.animInfo.animFrame == 8 then
+                set_mario_action(m, ACT_IDLE, 0)
+            end
+        else
+            set_mario_action(m, ACT_FREEFALL_LAND, 0)
+        end
         return
     end
 
@@ -544,7 +558,7 @@ local function act_spin_jump(m)--GALAXY SPIN / SPIN JUMP
         e.spinSpeed = e.spinSpeed * 0.78
         m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y + (65535 * e.spinSpeed))
         set_mario_animation(m, CHAR_ANIM_START_TWIRL)
-        set_mario_particle_flags(m, PARTICLE_SPARKLES, 0)
+        set_mario_particle_flags(m, PARTICLE_SPARKLES | ((not e.fromGround and m.actionTimer == 3) and PARTICLE_MIST_CIRCLE or 0), 0)
     else
         set_mario_action(m, ACT_SPIN_JUMP_END, 0)
     end
@@ -553,7 +567,7 @@ local function act_spin_jump(m)--GALAXY SPIN / SPIN JUMP
     return false
 end
 
-local function act_spin_jump_end(m)--GALAXY SPIN END / SPIN JUMP END
+local function act_spin_jump_end(m)--GALAXY SPIN END / STAR SPIN END / SPIN JUMP END
     local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
     local e = gMarioStateExtras[m.playerIndex]
     set_mario_animation(m, CHAR_ANIM_GENERAL_FALL)
@@ -1176,6 +1190,7 @@ local function mario_on_set_action(m)
     end
 
     if (m.floorHeight == m.pos.y) then
+        e.fromGround = true
         e.didAirDash = false
         e.didSpin = false
         e.dashPress = 0
@@ -1184,10 +1199,6 @@ local function mario_on_set_action(m)
 
         e.twirlWalls = 2
         e.fromWall = false
-    else
-        if e.didSpin then
-            e.fromGround = false
-        end
     end
 
     if m.action == ACT_WALL_SLIDE then
@@ -1350,8 +1361,8 @@ local function mario_update(m)
         end
     end
 
-    --GALAXY SPIN / SPIN JUMP
-    if SPINACTIONS[m.action] and ((m.controller.buttonPressed & X_BUTTON) ~= 0) and e.spinCooldown <= 0 then
+    --GALAXY SPIN / STAR SPIN / SPIN JUMP
+    if (SPINACTIONS[m.action] or GROUNDACTIONS[m.action]) and ((m.controller.buttonPressed & X_BUTTON) ~= 0) and e.spinCooldown <= 0 then
         if not e.didSpin then
             e.spinCooldown = 30
             if GROUNDACTIONS[m.action] then
@@ -1359,6 +1370,7 @@ local function mario_update(m)
                 e.fromGround = true
             else
                 m.vel.y = 50
+                e.fromGround = false
             end
             play_sound_with_freq_scale(SOUND_MENU_COLLECT_SECRET, m.marioObj.header.gfx.cameraToObject, 1.75)
             set_mario_action(m, ACT_SPIN_JUMP, 1)
@@ -1486,13 +1498,13 @@ local function inputs_command(msg)
     local s = gPlayerSyncTable[0]
     djui_chat_message_create([[
 \#b7ffa1\Ground Moveset:
-\#ffbb80\(X)\#ffffff\ - Galaxy Spin | \#ff7a7a\(A)\#d1e3ff\ in mid-air\#ffffff\ - Air Dash
+\#ffbb80\(X)\#ffffff\ - Star Spin | \#ff7a7a\(A)\#d1e3ff\ in mid-air\#ffffff\ - Air Dash
 \#c0abff\(Z)\#ffdd00\ + \#7591ff\(B)\#ffffff\ - Roll | \#c0abff\(Z)\#ffdd00\ + \#7591ff\(B)\#d1e3ff\ in mid-air\#ffffff\ - Air Dive
 \#c0abff\(Z)\#ffdd00\ + \#ff7a7a\(A)\#ffffff\ - Ground Pound Jump
 \#83e6cb\(Joystick)\#ffffff\ - Sunshine Spin
 
 \#b5edff\Water Moveset:
-\#7591ff\(B)\#ffffff\ - Galaxy Swim | \#7591ff\(B)\#d1e3ff\ on water surface\#ffffff\ - Dolphin Dive]])
+\#7591ff\(B)\#ffffff\ - Star Swim | \#7591ff\(B)\#d1e3ff\ on water surface\#ffffff\ - Dolphin Dive]])
     if not s.usingHybird then
         djui_chat_message_create([[
 \#ff7a7a\(!) - You're currently not using the moveset in order to perform these actions.
