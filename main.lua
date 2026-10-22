@@ -85,6 +85,7 @@ local SHINESPINACTIONS = {
     [ACT_LONG_JUMP] = true,
     [ACT_WALL_KICK_AIR] = true,
     [ACT_DIVE] = true,
+    [ACT_SIDE_FLIP] = true,
     [ACT_TWIRL_N_PLACE] = true,
     [ACT_AIR_DASH_END] = true,
     [ACT_SPIN_JUMP_END] = true
@@ -767,6 +768,7 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     end
     
     if stepResult == GROUND_STEP_LEFT_GROUND then
+        play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
         e.twirlSFX = e.twirlSFX + 1
         if (e.twirlSFX == 3 or e.twirlSFX == 6 or e.twirlSFX == 9) then
             play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 3 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
@@ -799,7 +801,6 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
             end
         else
             if not e.didTwiAir and (m.input & INPUT_A_PRESSED) ~= 0 then
-                play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
                 m.vel.y = 80
                 e.twirlSFX = 0
                 e.didTwiAir = true
@@ -823,7 +824,7 @@ local function act_drill_down(m)--DRILLING DOWN
     local e = gMarioStateExtras[m.playerIndex]
 
     if not e.fromGround then
-        m.forwardVel = math.min(m.forwardVel, 10)
+        m.forwardVel = math.min(m.forwardVel, 20)
     end
     m.vel.y = math.max(m.vel.y - 8, -200)
     update_air_without_turn(m);
@@ -850,6 +851,9 @@ local function act_drill_down(m)--DRILLING DOWN
             end
 
             landing_step(m, CHAR_ANIM_TWIRL_LAND, ACT_IDLE)
+            if m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_TWIRL_LAND then
+                m.forwardVel = 0
+            end
             -- m.actionState = 1
             return
         else
@@ -1107,12 +1111,12 @@ local function act_emote_sit(m)--EMOTE SIT
         else
             set_mario_animation(m, CHAR_ANIM_START_SLEEP_SITTING)
             if m.marioObj.header.gfx.animInfo.animFrame == 20 then
-                play_sound(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND, m.marioObj.header.gfx.cameraToObject)
+                play_sound_with_freq_scale(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND + m.terrainSoundAddend, m.marioObj.header.gfx.cameraToObject, random_float(1.22, 1.73))
             end
         end
     else
         if m.marioObj.header.gfx.animInfo.animFrame == 27 and m.marioObj.header.gfx.animInfo.animID == 134 then
-            play_sound(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND, m.marioObj.header.gfx.cameraToObject)
+            play_sound_with_freq_scale(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND + m.terrainSoundAddend, m.marioObj.header.gfx.cameraToObject, random_float(0.8, 1))
         elseif m.marioObj.header.gfx.animInfo.animFrame == 37 and e.isLaying then
             set_mario_animation(m, CHAR_ANIM_SLEEP_LYING)
         elseif m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_SLEEP_LYING then
@@ -1267,9 +1271,10 @@ local function mario_update(m)
     --ESCAPE OUT OF BEING GRABBED
     if m.action == ACT_GRABBED then
         if m.heldByObj ~= nil then
-            m.pos.x = m.heldByObj.oPosX
+            m.pos.x = m.heldByObj.oPosX + 100 * sins(m.heldByObj.oMoveAngleYaw) + 1 * coss(m.heldByObj.oMoveAngleYaw)
+            m.pos.z = m.heldByObj.oPosZ + 100 * coss(m.heldByObj.oMoveAngleYaw) - 1 * sins(m.heldByObj.oMoveAngleYaw)
             m.pos.y = m.heldByObj.oPosY + 50
-            m.pos.z = m.heldByObj.oPosZ
+            m.faceAngle.y = m.heldByObj.oMoveAngleYaw
         end
 
         if math.abs(m.controller.stickX) > math.abs(m.controller.stickY) then
@@ -1311,7 +1316,8 @@ local function mario_update(m)
                 set_camera_shake_from_hit(SHAKE_SHOCK)
             else
                 play_sound_with_freq_scale(SOUND_GENERAL_RACE_GUN_SHOT, m.marioObj.header.gfx.cameraToObject, 2)
-                set_mario_action(m, ACT_HARD_FORWARD_AIR_KB, 0)
+                set_mario_action(m, ACT_FORWARD_AIR_KB, 0)
+                m.forwardVel = 0
                 m.vel.y = 23
                 e.grabEscape = 0
                 e.grabStruggle = false
@@ -1352,7 +1358,7 @@ local function mario_update(m)
     end
 
     --GROUND POUND JUMP
-    if m.action == ACT_GROUND_POUND_LAND and (m.input & INPUT_A_PRESSED) ~= 0 then
+    if (m.action == ACT_GROUND_POUND_LAND or (e.fromGround and m.action == ACT_DRILL_DOWN)) and (m.input & INPUT_A_PRESSED) ~= 0 then
         if e.groundPoundCooldown <= 0 then
             set_mario_action(m, ACT_TRIPLE_JUMP, 0)
             play_mario_sound(m, 0, CHAR_SOUND_TWIRL_BOUNCE)
@@ -1407,7 +1413,7 @@ local function mario_update(m)
     end
 
     --SUNSHINE SPIN / TWIRL N PLACE
-    if SHINESPINACTIONS[m.action] and math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 and not e.didTwiAir then
+    if SHINESPINACTIONS[m.action] and math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 and not e.didTwiAir and m.quicksandDepth < 30.0 then
         local stickYaw = atan2s(m.controller.stickY, m.controller.stickX)
         if e.twirlYaw == nil then
             e.twirlYaw = stickYaw
@@ -1480,7 +1486,7 @@ local function mario_update(m)
     --DEBUG FUNCTION
     if (m.controller.buttonPressed & Y_BUTTON) ~= 0 then
         --m.health = 0x200
-        --spawn_sync_object(id_bhvKingBobomb, E_MODEL_KING_BOBOMB, m.pos.x - 300, m.pos.y, m.pos.z - 300, nil)
+        --spawn_sync_object(id_bhvChuckya, E_MODEL_CHUCKYA, m.pos.x - 300, m.pos.y, m.pos.z - 300, nil)
         --set_water_level(0, 10000, true)
     end
 
