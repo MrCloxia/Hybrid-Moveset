@@ -32,7 +32,7 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY)
 
---gLevelValues.entryLevel = LEVEL_LLL--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_HMC--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -1133,12 +1133,12 @@ local function act_emote_sit(m)--EMOTE SIT
         else
             set_mario_animation(m, CHAR_ANIM_START_SLEEP_SITTING)
             if m.marioObj.header.gfx.animInfo.animFrame == 20 then
-                play_sound_with_freq_scale(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND + m.terrainSoundAddend, m.marioObj.header.gfx.cameraToObject, random_float(1.22, 1.73))
+                play_sound_with_freq_scale(((m.flags & MARIO_METAL_CAP) ~= 0 and SOUND_ACTION_METAL_HEAVY_LANDING or SOUND_ACTION_TERRAIN_BODY_HIT_GROUND + m.terrainSoundAddend), m.marioObj.header.gfx.cameraToObject, random_float(1.22, 1.73))
             end
         end
     else
         if m.marioObj.header.gfx.animInfo.animFrame == 27 and m.marioObj.header.gfx.animInfo.animID == 134 then
-            play_sound_with_freq_scale(SOUND_ACTION_TERRAIN_BODY_HIT_GROUND + m.terrainSoundAddend, m.marioObj.header.gfx.cameraToObject, random_float(0.8, 1))
+            play_sound_with_freq_scale(((m.flags & MARIO_METAL_CAP) ~= 0 and SOUND_ACTION_METAL_HEAVY_LANDING or SOUND_ACTION_TERRAIN_BODY_HIT_GROUND + m.terrainSoundAddend), m.marioObj.header.gfx.cameraToObject, random_float(0.8, 1))
         elseif m.marioObj.header.gfx.animInfo.animFrame == 37 and e.isLaying then
             set_mario_animation(m, CHAR_ANIM_SLEEP_LYING)
         elseif m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_SLEEP_LYING then
