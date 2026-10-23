@@ -520,6 +520,7 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
     update_air_without_turn(m);
 
     if m.actionTimer == 0 then
+        set_mario_animation(m, CHAR_ANIM_START_TWIRL)
         e.spinSpeed = 1
     end
 
@@ -558,7 +559,6 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
         end
         e.spinSpeed = e.spinSpeed * 0.78
         m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y + (65535 * e.spinSpeed))
-        set_mario_animation(m, CHAR_ANIM_START_TWIRL)
         set_mario_particle_flags(m, PARTICLE_SPARKLES | ((not e.fromGround and m.actionTimer == 3) and PARTICLE_MIST_CIRCLE or 0), 0)
     else
         set_mario_action(m, ACT_SPIN_JUMP_END, 0)
@@ -748,6 +748,10 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         set_mario_particle_flags(m, PARTICLE_DUST, 0)
     end
 
+    if stepResult == AIR_STEP_NONE and e.didTwiAir then
+        play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
+    end
+
     if (m.actionTimer % 3) == 0 and stepResult ~= GROUND_STEP_LEFT_GROUND and m.actionTimer <= 20 then
         play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, random_float(1, 1.45))
         e.didTwiAir = false
@@ -768,7 +772,6 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     end
     
     if stepResult == GROUND_STEP_LEFT_GROUND then
-        play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
         e.twirlSFX = e.twirlSFX + 1
         if (e.twirlSFX == 3 or e.twirlSFX == 6 or e.twirlSFX == 9) then
             play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 3 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
@@ -789,10 +792,21 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         if m.actionTimer >= 25 then
             if e.fromGround then
                 if e.didTwiAir then
+                    e.twirlSFX = 1
                     play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
+                    if (m.input & INPUT_NONZERO_ANALOG) == 0 then
+                        play_character_sound(m, CHAR_SOUND_HAHA)
+                    end
                 end
+                if (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
+                    set_mario_action(m, ACT_WALKING, 0)
+                    return
+                elseif (m.input & INPUT_B_PRESSED) ~= 0 then
+                    set_mario_action(m, ACT_PUNCHING, 0)
+                    return
+                end
+                landing_step(m, (e.twirlSFX == 1 and CHAR_ANIM_TRIPLE_JUMP_LAND or CHAR_ANIM_TWIRL_LAND), ACT_IDLE)
                 e.didTwiAir = false
-                landing_step(m, CHAR_ANIM_TWIRL_LAND, ACT_IDLE)
                 return
             else
                 e.twirlTimer = 0
@@ -826,12 +840,19 @@ local function act_drill_down(m)--DRILLING DOWN
     if not e.fromGround then
         m.forwardVel = math.min(m.forwardVel, 20)
     end
-    m.vel.y = math.max(m.vel.y - 8, -200)
-    update_air_without_turn(m);
 
-    local stepResult = perform_air_step(m, 0)
+    m.vel.y = math.max(m.vel.y - 8, -200)
     m.marioBodyState.handState = MARIO_HAND_OPEN
     set_mario_particle_flags(m, PARTICLE_BREATH | PARTICLE_DUST, 0)
+
+    local stepResult = perform_air_step(m, 0)
+    update_lava_boost_or_twirling(m)
+    update_air_without_turn(m);
+
+    if stepResult == AIR_STEP_HIT_LAVA_WALL then
+        lava_boost_on_wall(m)
+        return
+    end
 
     if m.actionTimer == 0 then
         e.fromGround = false
@@ -844,6 +865,7 @@ local function act_drill_down(m)--DRILLING DOWN
         if e.fromGround then
             if (m.input & INPUT_B_PRESSED) ~= 0 then
                 m.squishTimer = 0
+                e.didTwiAir = false
                 mario_set_forward_vel(m, 100)
                 play_sound_with_freq_scale(SOUND_OBJ2_MRI_SPINNING, m.marioObj.header.gfx.cameraToObject, 1.8)
                 set_mario_action(m, ACT_ROLL, 0)
@@ -1358,7 +1380,7 @@ local function mario_update(m)
     end
 
     --GROUND POUND JUMP
-    if (m.action == ACT_GROUND_POUND_LAND or (e.fromGround and m.action == ACT_DRILL_DOWN)) and (m.input & INPUT_A_PRESSED) ~= 0 then
+    if (m.action == ACT_GROUND_POUND_LAND or (e.fromGround and m.action == ACT_DRILL_DOWN)) and (m.input & INPUT_A_PRESSED) ~= 0 and m.floor.type ~= SURFACE_BURNING then
         if e.groundPoundCooldown <= 0 then
             set_mario_action(m, ACT_TRIPLE_JUMP, 0)
             play_mario_sound(m, 0, CHAR_SOUND_TWIRL_BOUNCE)
