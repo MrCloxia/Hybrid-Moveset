@@ -32,7 +32,7 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY)
 
---gLevelValues.entryLevel = LEVEL_DDD--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_JRB--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -342,8 +342,8 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
     if m.actionTimer == 0 then
         e.spinSpeed = 1
         play_sound_with_freq_scale(SOUND_ACTION_SWIM_FAST, m.marioObj.header.gfx.cameraToObject, random_float(1.42, 2)) 
-        mario_set_forward_vel(m,math.max(math.min(m.forwardVel+35,90),40))
-        set_mario_animation(m, CHAR_ANIM_START_TWIRL)
+        mario_set_forward_vel(m, math.max(math.min(m.forwardVel + 35, 90), 40))
+        set_mario_animation(m, CHAR_ANIM_WING_CAP_FLY)
     end
 
     play_sound_with_freq_scale(SOUND_ENV_WATER, m.marioObj.header.gfx.cameraToObject, 1.35)
@@ -464,16 +464,15 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
             -- end
         end
 
-        mario_set_forward_vel(m,m.forwardVel-1)
+        mario_set_forward_vel(m, m.forwardVel - 1)
 
-        
         local probe = m.pos.y + 1.5;
 
         if (probe >= m.waterLevel - 80) then
             set_mario_action(m, ACT_DOLPHIN_DIVE, 0)--DOLPHIN DIVE
             local diveSpeed = m.forwardVel / 1.2 + 50
             m.vel.y = diveSpeed * sins(m.faceAngle.x)
-            mario_set_forward_vel(m,diveSpeed * coss(m.faceAngle.x))
+            mario_set_forward_vel(m, diveSpeed * coss(m.faceAngle.x))
             play_sound_with_freq_scale(SOUND_OBJ_DIVING_INTO_WATER, m.marioObj.header.gfx.cameraToObject, 0.8)
             set_mario_particle_flags(m, PARTICLE_WATER_SPLASH, 0)
             if m.forwardVel > 40 then
@@ -481,16 +480,11 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
             else
                 play_mario_sound(m, SOUND_ACTION_SWIM_FAST, CHAR_SOUND_HOOHOO)
             end
-
             return
         end
     end
 
-    e.swimSpinAngle = e.swimSpinAngle + (0x10000 * e.spinSpeed)
-
-    m.marioObj.header.gfx.angle.x = 0x8000 + e.swimSpinAngle--Spins correctly but doesn't go up or down at the momment.
-    m.marioObj.header.gfx.angle.y = m.faceAngle.y + 0x4000
-    m.marioObj.header.gfx.angle.z = -m.faceAngle.z + 0x3F00
+    m.marioObj.header.gfx.angle.z = limit_angle(m.faceAngle.z + (65535 * e.spinSpeed))
     
     m.actionTimer = m.actionTimer + 1
 end
@@ -732,7 +726,6 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     e.airTime = e.airTime + 1
 
     -- m.faceAngle.y = m.intendedYaw - approach_s32(m.intendedYaw - m.faceAngle.y, 0, 0x300, 0x300);
-    m.marioBodyState.handState = MARIO_HAND_OPEN
 
     if m.actionTimer == 0 then
         e.spinAngle = 0
@@ -747,6 +740,10 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
     update_lava_boost_or_twirling(m)
     update_air_without_turn(m);
+
+    if e.didTwiAir and e.fromGround or m.actionTimer < 10 then
+        m.marioBodyState.handState = MARIO_HAND_OPEN
+    end
 
     if stepResult == AIR_STEP_HIT_LAVA_WALL then
         lava_boost_on_wall(m)
