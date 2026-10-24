@@ -32,7 +32,7 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY)
 
---gLevelValues.entryLevel = LEVEL_HMC--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_DDD--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -65,6 +65,7 @@ local AIRDASHACTIONS = {
     [ACT_JUMP] = true,
     [ACT_DOUBLE_JUMP] = true,
     [ACT_TRIPLE_JUMP] = true,
+    [ACT_SPECIAL_TRIPLE_JUMP] = true,
     [ACT_LONG_JUMP] = true,
     [ACT_DIVE] = true,
     [ACT_FREEFALL] = true,
@@ -82,6 +83,7 @@ local SHINESPINACTIONS = {
     [ACT_JUMP] = true,
     [ACT_DOUBLE_JUMP] = true,
     [ACT_TRIPLE_JUMP] = true,
+    [ACT_SPECIAL_TRIPLE_JUMP] = true,
     [ACT_LONG_JUMP] = true,
     [ACT_WALL_KICK_AIR] = true,
     [ACT_DIVE] = true,
@@ -166,12 +168,18 @@ for i = 0, (MAX_PLAYERS - 1) do
 
     e.animFrame = 0
     e.groundPoundCooldown = 0
+
     e.hangSpeed = 0
+
     e.fromGround = true
+
     e.spinCooldown = 0
     e.spinAngle = 0
     e.didSpin = false
+
+    e.dashPress = 0
     e.didAirDash = false
+
     e.twirlYaw = 0
     e.twirlAmount = 0
     e.twirlTimer = 0
@@ -180,9 +188,12 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.airTime = 0
     e.twirlWalls = 2
     e.fromWall = false
+
     e.angleVel = 0
     e.swimSpinAngle = 0
+
     e.GPtWP = false
+
     e.didSwimDive = false
 
     e.syncedHeadAngle = {}
@@ -318,30 +329,32 @@ local function act_fake_freefall(m)
     common_air_action_step(m, ACT_FREEFALL, CHAR_ANIM_GENERAL_FALL, AIR_STEP_CHECK_LEDGE_GRAB | AIR_STEP_CHECK_HANG)
 end
 
-local function act_water_spin(m)--GALAXY SWIM / SPIN SWIM
+local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
     if not m or m.playerIndex == nil or not gMarioStateExtras[m.playerIndex] then
         return false
     end
     
     local e = gMarioStateExtras[m.playerIndex]
+    local movement = perform_water_step(m)
 
     m.marioBodyState.handState = MARIO_HAND_OPEN
 
     if m.actionTimer == 0 then
         e.spinSpeed = 1
-        play_sound_with_freq_scale(SOUND_ACTION_SWIM_FAST, m.marioObj.header.gfx.cameraToObject, 1.75)
+        play_sound_with_freq_scale(SOUND_ACTION_SWIM_FAST, m.marioObj.header.gfx.cameraToObject, random_float(1.42, 2)) 
         mario_set_forward_vel(m,math.max(math.min(m.forwardVel+35,90),40))
+        set_mario_animation(m, CHAR_ANIM_START_TWIRL)
     end
 
+    play_sound_with_freq_scale(SOUND_ENV_WATER, m.marioObj.header.gfx.cameraToObject, 1.35)
     e.spinBufferTimer = e.spinBufferTimer - 1
     if (m.input & INPUT_B_PRESSED) ~= 0 then
         e.spinBufferTimer = 5
     end
 
     e.spinSpeed = e.spinSpeed * 0.78
-    set_mario_animation(m, CHAR_ANIM_START_TWIRL)
     set_mario_particle_flags(m, PARTICLE_SPARKLES | PARTICLE_PLUNGE_BUBBLE, 0)
-
+    
     if m.actionTimer > 20 then
         if e.spinBufferTimer > 0 then
             m.actionTimer = -1
@@ -399,8 +412,6 @@ local function act_water_spin(m)--GALAXY SWIM / SPIN SWIM
         m.vel.x = m.forwardVel * sins(m.faceAngle.y) * coss(m.faceAngle.x)
         m.vel.y = m.forwardVel * sins(m.faceAngle.x)
         m.vel.z = m.forwardVel * coss(m.faceAngle.y) * coss(m.faceAngle.x)
-
-        local movement = perform_water_step(m)
 
         function bonk()
             mario_set_forward_vel(m,-20)
@@ -1215,7 +1226,7 @@ local function mario_on_set_action(m)
         e.savedWallSlide = false
     end
 
-    if (m.floorHeight == m.pos.y) then
+    if (m.floorHeight == m.pos.y) or (m.action & ACT_FLAG_SWIMMING) ~= 0 then
         e.fromGround = true
         e.didAirDash = false
         e.didSpin = false
