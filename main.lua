@@ -32,7 +32,7 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY)
 
---gLevelValues.entryLevel = LEVEL_CCM--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_WDW--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -99,7 +99,9 @@ local WATERACTIONS = {
     [ACT_WATER_PLUNGE] = true,
     [ACT_BREASTSTROKE] = true,
     [ACT_FLUTTER_KICK] = true,
-    [ACT_WATER_ACTION_END] = true
+    [ACT_WATER_ACTION_END] = true,
+    [ACT_WATER_PUNCH] = true,
+    [ACT_WATER_SPIN] = true
     --[ACT_HOLD_WATER_IDLE] = true,
     --[ACT_HOLD_WATER_ACTION_END] = true,
     --[ACT_HOLD_SWIMMING_END] = true,
@@ -345,7 +347,7 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
     if m.actionTimer == 0 then
         e.spinSpeed = 1
         play_sound_with_freq_scale(SOUND_ACTION_SWIM_FAST, m.marioObj.header.gfx.cameraToObject, random_float(1.42, 2)) 
-        mario_set_forward_vel(m, math.max(math.min(m.forwardVel + 35, 90), 40))
+        mario_set_forward_vel(m, math.max(math.min(m.forwardVel + 30, 88), 40))
         set_mario_animation(m, CHAR_ANIM_WING_CAP_FLY)
     end
 
@@ -1541,7 +1543,7 @@ local function mario_update(m)
     end
 
     if WATERACTIONS[m.action] then
-        if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 180 then--WATER GROUND POUND
+        if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 120 then--WATER GROUND POUND
             set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
         end
     end
