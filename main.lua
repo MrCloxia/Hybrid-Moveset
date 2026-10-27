@@ -32,7 +32,7 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY)
 
---gLevelValues.entryLevel = LEVEL_JRB--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_CCM--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -183,7 +183,10 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.twirlYaw = 0
     e.twirlAmount = 0
     e.twirlTimer = 0
+    e.analogStick = 0
+    e.didTwiJump = false
     e.didTwiAir = false
+    e.inTwiAir = false
     e.twirlSFX = 0
     e.airTime = 0
     e.twirlWalls = 2
@@ -725,12 +728,22 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     local e = gMarioStateExtras[m.playerIndex]
     e.airTime = e.airTime + 1
 
+    local flatSurface = math.abs(m.floorAngle) < 0x1000
+    if ((m.floorHeight == m.pos.y) and (m.floor.type == SURFACE_CLASS_VERY_SLIPPERY or m.area.terrainType == TERRAIN_SLIDE) and not flatSurface) then
+        local faceAngle = math.abs((m.faceAngle.y - m.intendedYaw + 0x8000) % 0x10000 - 0x8000)
+        if faceAngle < 0x2000 then
+            set_mario_action(m, ACT_BUTT_SLIDE, 0)
+        else
+            set_mario_action(m, ACT_STOMACH_SLIDE, 0)
+        end
+        return
+    end
+
     -- m.faceAngle.y = m.intendedYaw - approach_s32(m.intendedYaw - m.faceAngle.y, 0, 0x300, 0x300);
 
     if m.actionTimer == 0 then
         e.spinAngle = 0
         e.spinSpeed = 10
-        e.didTwiAir = false
         e.twirlTimer = 0
         e.twirlSFX = 0
         e.airTime = 0
@@ -738,10 +751,11 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     end
 
     local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
+
     update_lava_boost_or_twirling(m)
     update_air_without_turn(m);
 
-    if e.didTwiAir and e.fromGround or m.actionTimer < 10 then
+    if (m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_TWIRL_LAND or m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_TRIPLE_JUMP_LAND) and m.actionTimer < 25 or e.inTwiAir then
         m.marioBodyState.handState = MARIO_HAND_OPEN
     end
 
@@ -750,23 +764,34 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         return
     end
 
-    if m.actionTimer <= 17 then
+    if m.actionTimer <= 17 and not e.inTwiAir then
         set_mario_particle_flags(m, PARTICLE_BREATH, 0)
     elseif stepResult == AIR_STEP_NONE then
         set_mario_particle_flags(m, PARTICLE_DUST, 0)
     end
 
-    if stepResult == AIR_STEP_NONE and e.didTwiAir then
-        play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
-    end
-
     if (m.actionTimer % 3) == 0 and stepResult ~= GROUND_STEP_LEFT_GROUND and m.actionTimer <= 20 then
         play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, random_float(1, 1.45))
         e.didTwiAir = false
+        e.inTwiAir = false
+    end
+
+    if ((stepResult == AIR_STEP_NONE and e.didTwiAir) or (not e.didTwiJump and (m.input & INPUT_A_PRESSED) ~= 0)) and m.actionState ~= 1 and stepResult ~= AIR_STEP_LANDED then
+        play_character_sound(m, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
+        m.actionState = 1
+    end
+
+    if stepResult == GROUND_STEP_LEFT_GROUND and e.analogStick >= 0x0800 then
+        m.actionTimer = 1
+    elseif stepResult == AIR_STEP_LANDED and not e.fromGround then
+        play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
+        e.fromGround = true
     end
 
     if stepResult == AIR_STEP_GRABBED_LEDGE then
         e.didTwiAir = false
+        e.didTwiJump = false
+        e.inTwiAir = false
         set_mario_action(m, ACT_LEDGE_GRAB, 0)
     elseif stepResult == AIR_STEP_HIT_WALL then
         if e.twirlWalls <= 0 then
@@ -785,9 +810,12 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
             play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 3 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
         end
         e.didTwiAir = true
+        e.inTwiAir = true
 
         if (m.input & INPUT_Z_DOWN) ~= 0 then
             e.didTwiAir = false
+            e.didTwiJump = false
+            e.inTwiAir = false
             e.twirlTimer = 0
             e.airTime = 0
             m.actionTimer = 0
@@ -797,7 +825,11 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     end
 
     if stepResult == AIR_STEP_LANDED then
-        if m.actionTimer >= 25 then
+        e.didTwiJump = false
+        e.inTwiAir = false
+        m.actionState = 0
+
+        if m.actionTimer >= 20 then
             if e.fromGround then
                 if e.didTwiAir then
                     e.twirlSFX = 1
@@ -822,16 +854,19 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
                 e.fromGround = true
             end
         else
-            if not e.didTwiAir and (m.input & INPUT_A_PRESSED) ~= 0 then
+            if not e.didTwiJump and (m.input & INPUT_A_PRESSED) ~= 0 then
                 m.vel.y = 80
                 e.twirlSFX = 0
-                e.didTwiAir = true
+                e.fromGround = false
+                e.fromWall = false
                 if (m.input & INPUT_B_PRESSED) ~= 0 then
                     m.faceAngle.y = m.intendedYaw
                     mario_set_forward_vel(m, math.max(math.min(m.forwardVel + 50, 100), 50))
                     set_mario_action(m, ACT_DIVE, 0)
                     return
                 end
+                e.inTwiAir = true
+                e.didTwiJump = true
             end
         end
     end
@@ -874,6 +909,7 @@ local function act_drill_down(m)--DRILLING DOWN
             if (m.input & INPUT_B_PRESSED) ~= 0 then
                 m.squishTimer = 0
                 e.didTwiAir = false
+                e.didTwiJump = false
                 mario_set_forward_vel(m, 100)
                 play_sound_with_freq_scale(SOUND_OBJ2_MRI_SPINNING, m.marioObj.header.gfx.cameraToObject, 1.8)
                 set_mario_action(m, ACT_ROLL, 0)
@@ -1223,12 +1259,14 @@ local function mario_on_set_action(m)
         e.savedWallSlide = false
     end
 
-    if (m.floorHeight == m.pos.y) or (m.action & ACT_FLAG_SWIMMING) ~= 0 then
+    if (m.floorHeight == m.pos.y) or (m.action & ACT_FLAG_SWIMMING) ~= 0 or (m.action & ACT_FLAG_ON_POLE) ~= 0 then
         e.fromGround = true
         e.didAirDash = false
         e.didSpin = false
         e.dashPress = 0
         e.didTwiAir = false
+        e.didTwiJump = false
+        e.inTwiAir = false
         e.twirlSFX = 0
 
         e.twirlWalls = 2
@@ -1443,27 +1481,31 @@ local function mario_update(m)
     end
 
     --SUNSHINE SPIN / TWIRL N PLACE
-    if SHINESPINACTIONS[m.action] and math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 and not e.didTwiAir and m.quicksandDepth < 30.0 then
+    if SHINESPINACTIONS[m.action] and math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 and m.quicksandDepth < 30.0 then
+        local flatSurface = math.abs(m.floorAngle) < 0x1000
+        if ((m.floorHeight == m.pos.y) and (m.floor.type == SURFACE_CLASS_VERY_SLIPPERY or m.area.terrainType == TERRAIN_SLIDE) and not flatSurface) then
+            return
+        end
         local stickYaw = atan2s(m.controller.stickY, m.controller.stickX)
         if e.twirlYaw == nil then
             e.twirlYaw = stickYaw
             e.twirlAmount = 0
             e.twirlTimer = 0
         end
-        local analogStick = stickYaw - e.twirlYaw
+        e.analogStick = stickYaw - e.twirlYaw
 
-        if analogStick > 0x4000 then
-            analogStick = analogStick - 0x10000
-        elseif analogStick < -0x4000 then
-            analogStick = analogStick + 0x10000
+        if e.analogStick > 0x4000 then
+            e.analogStick = e.analogStick - 0x10000
+        elseif e.analogStick < -0x4000 then
+            e.analogStick = e.analogStick + 0x10000
         end
         e.twirlYaw = stickYaw
-        e.twirlAmount = e.twirlAmount + analogStick * ((m.action & ACT_FLAG_AIR == 0) and 1.0 or 1.25)
+        e.twirlAmount = e.twirlAmount + e.analogStick * ((m.action & ACT_FLAG_AIR == 0) and 1.0 or 1.25)
         e.twirlTimer = e.twirlTimer + 1
 
         if math.abs(e.twirlAmount) >= 0x10000 then
-            local analogSpeed = (math.abs(e.twirlAmount) / e.twirlTimer)
-            if analogSpeed >= 0x0800 and e.twirlTimer <= 15 then
+            e.analogStick = (math.abs(e.twirlAmount) / e.twirlTimer)
+            if e.analogStick >= 0x0800 and e.twirlTimer <= 15 and not e.didTwiAir then
                 e.twirlAmount = 0
                 e.twirlYaw = nil
                 e.twirlTimer = 0
@@ -1480,6 +1522,7 @@ local function mario_update(m)
             e.twirlTimer = 0
         end
     else
+        e.analogStick = 0
         e.twirlTimer = 0
         e.twirlYaw = nil
         e.twirlAmount = 0
@@ -1541,7 +1584,8 @@ local function inputs_command(msg)
 \#83e6cb\(Joystick)\#ffffff\ - Sunshine Spin
 
 \#b5edff\Water Moveset:
-\#7591ff\(B)\#ffffff\ - Star Swim | \#7591ff\(B)\#d1e3ff\ on water surface\#ffffff\ - Dolphin Dive]])
+\#7591ff\(B)\#ffffff\ - Star Swim | \#7591ff\(B)\#d1e3ff\ on water surface\#ffffff\ - Dolphin Dive
+\#c0abff\(Z)\#ffffff\ - Ground Pound]])
     if not s.usingHybird then
         djui_chat_message_create([[
 \#ff7a7a\(!) - You're currently not using the moveset in order to perform these actions.
