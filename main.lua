@@ -24,8 +24,8 @@ ACT_CUSTOM_AIR_HIT_WALL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AI
 ACT_ROLL = allocate_mario_action(ACT_GROUP_MOVING)
 ACT_AIR_DASH = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_AIR_DASH_END = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
-ACT_TWIRL_N_PLACE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
-ACT_DRILL_DOWN = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_TWIRL_N_PLACE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_DRILL_DOWN = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_DOLPHIN_DIVE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_WATER_SPIN = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
@@ -481,7 +481,8 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
             play_sound_with_freq_scale(SOUND_OBJ_DIVING_INTO_WATER, m.marioObj.header.gfx.cameraToObject, 0.8)
             set_mario_particle_flags(m, PARTICLE_WATER_SPLASH, 0)
             if m.forwardVel > 40 then
-                play_mario_sound(m, SOUND_ACTION_SWIM_FAST, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
+                play_character_sound_offset(m, CHAR_SOUND_YAHOO_WAHA_YIPPEE, math.random(0, 4) << 16)
+                play_sound(SOUND_ACTION_SWIM_FAST, m.marioObj.header.gfx.cameraToObject)
             else
                 play_mario_sound(m, SOUND_ACTION_SWIM_FAST, CHAR_SOUND_HOOHOO)
             end
@@ -779,7 +780,7 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     end
 
     if ((stepResult == AIR_STEP_NONE and e.didTwiAir) or (not e.didTwiJump and (m.input & INPUT_A_PRESSED) ~= 0)) and m.actionState ~= 1 and stepResult ~= AIR_STEP_LANDED then
-        play_character_sound(m, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
+        play_character_sound_offset(m, CHAR_SOUND_YAHOO_WAHA_YIPPEE, math.random(0, 4) << 16)
         m.actionState = 1
     end
 
@@ -1430,8 +1431,9 @@ local function mario_update(m)
     --GROUND POUND JUMP
     if (m.action == ACT_GROUND_POUND_LAND or (e.fromGround and m.action == ACT_DRILL_DOWN)) and (m.input & INPUT_A_PRESSED) ~= 0 and m.floor.type ~= SURFACE_BURNING then
         if e.groundPoundCooldown <= 0 then
+            m.squishTimer = 3.5
             set_mario_action(m, ACT_TRIPLE_JUMP, 0)
-            play_mario_sound(m, 0, CHAR_SOUND_TWIRL_BOUNCE)
+            play_mario_sound(m, SOUND_GENERAL_BOING2, CHAR_SOUND_TWIRL_BOUNCE)
             m.faceAngle.y = m.intendedYaw
             m.vel.y = 70.0
             e.groundPoundCooldown = 0
@@ -1475,7 +1477,7 @@ local function mario_update(m)
         elseif m.forwardVel > 35 and m.vel.y <= 10 then
             m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
             play_sound_with_freq_scale(SOUND_ACTION_FLYING_FAST, m.marioObj.header.gfx.cameraToObject, 2.45)
-            play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
+            play_mario_sound(m, 0, CHAR_SOUND_YAHOO)
             set_mario_action(m, ACT_AIR_DASH, 0)
             m.faceAngle.y = m.intendedYaw
             e.didAirDash = true
@@ -1502,7 +1504,7 @@ local function mario_update(m)
             e.analogStick = e.analogStick + 0x10000
         end
         e.twirlYaw = stickYaw
-        e.twirlAmount = e.twirlAmount + e.analogStick * ((m.action & ACT_FLAG_AIR == 0) and 1.0 or 1.25)
+        e.twirlAmount = e.twirlAmount + e.analogStick * ((m.floorHeight == m.pos.y) and 1.25 or 1)
         e.twirlTimer = e.twirlTimer + 1
 
         if math.abs(e.twirlAmount) >= 0x10000 then
