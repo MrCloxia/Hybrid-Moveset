@@ -949,6 +949,7 @@ end
 
 local function act_water_ground_pound(m)--WATER GROUND POUND
     local e = gMarioStateExtras[m.playerIndex]
+    local waterResult = perform_water_step(m)
     m.forwardVel = 0
     m.vel.x = 0
     m.vel.z = 0
@@ -968,28 +969,31 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
     if m.actionTimer == 0 and not e.GPtWP then
         m.faceAngle.x = 0 
         m.vel.y = 0
-        set_mario_animation(m,CHAR_ANIM_START_GROUND_POUND)
+        set_mario_animation(m, CHAR_ANIM_START_GROUND_POUND)
         play_sound(SOUND_GENERAL_SWISH_WATER, m.marioObj.header.gfx.cameraToObject)
-    elseif (m.actionTimer == 11 and not e.GPtWP) or (e.GPtWP and m.actionTimer == 0) then
-        m.vel.y = -40
-        
-        set_mario_animation(m,CHAR_ANIM_GROUND_POUND)
+    elseif (m.actionTimer >= 11 and not e.GPtWP) or (e.GPtWP) then
+        m.vel.y = math.max(m.vel.y - 8, -50)
+    end
+
+    if (m.actionTimer == 11 and not e.GPtWP) or (m.actionTimer == 0 and e.GPtWP) then
+        set_mario_animation(m, CHAR_ANIM_GROUND_POUND)
         if not e.GPtWP then
             play_mario_sound(m, 0, CHAR_SOUND_GROUND_POUND_WAH)
         end
         play_sound_with_freq_scale(SOUND_GENERAL_MOVING_WATER, m.marioObj.header.gfx.cameraToObject, 2)
-    elseif m.actionTimer >= 13 or e.GPtWP then
+    end
+    
+    if m.actionTimer >= 13 or e.GPtWP then
         set_mario_particle_flags(m, PARTICLE_PLUNGE_BUBBLE, 0)
     end
 
-    local waterResult = perform_water_step(m)
-
-    if m.actionTimer > 30 then
-        set_mario_action(m, ACT_WATER_IDLE, 0)
-    elseif waterResult == WATER_STEP_HIT_FLOOR then
+    if waterResult == WATER_STEP_HIT_FLOOR then
         play_sound(SOUND_ACTION_TERRAIN_HEAVY_LANDING, m.marioObj.header.gfx.cameraToObject)
         set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
         set_mario_action(m, ACT_WATER_GROUND_POUND_LAND, 0)
+        return
+    elseif m.actionTimer > 30 then
+        set_mario_action(m, ACT_WATER_IDLE, 0)
     end
     
     m.actionTimer = m.actionTimer + 1
@@ -1431,7 +1435,6 @@ local function mario_update(m)
     --GROUND POUND JUMP
     if (m.action == ACT_GROUND_POUND_LAND or (e.fromGround and m.action == ACT_DRILL_DOWN)) and (m.input & INPUT_A_PRESSED) ~= 0 and m.floor.type ~= SURFACE_BURNING then
         if e.groundPoundCooldown <= 0 then
-            m.squishTimer = 3.5
             set_mario_action(m, ACT_TRIPLE_JUMP, 0)
             play_mario_sound(m, SOUND_GENERAL_BOING2, CHAR_SOUND_TWIRL_BOUNCE)
             m.faceAngle.y = m.intendedYaw
