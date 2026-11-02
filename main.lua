@@ -17,23 +17,23 @@ local math_floor = math.floor
 -------------------------------
 
 ACT_FAKE_FREEFALL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
-ACT_SPIN_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_SPIN_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION | ACT_FLAG_ATTACKING)
 ACT_SPIN_JUMP_END = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_WALL_SLIDE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_CUSTOM_AIR_HIT_WALL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR)
 ACT_ROLL = allocate_mario_action(ACT_GROUP_MOVING)
-ACT_AIR_DASH = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_AIR_DASH = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION | ACT_FLAG_ATTACKING)
 ACT_AIR_DASH_END = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_TWIRL_N_PLACE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_DRILL_DOWN = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
-ACT_DOLPHIN_DIVE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_DOLPHIN_DIVE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION | ACT_FLAG_ATTACKING)
 ACT_WATER_SPIN = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_DIVE = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
-ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
-ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
-ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY)
+ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING | ACT_FLAG_ATTACKING)
+ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING | ACT_FLAG_ATTACKING)
+ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
---gLevelValues.entryLevel = LEVEL_WDW--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_DDD--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -171,14 +171,13 @@ for i = 0, (MAX_PLAYERS - 1) do
 
     e.animFrame = 0
     e.groundPoundCooldown = 0
-
+    
+    e.spinSpeed = 0
     e.hangSpeed = 0
-
-    e.fromGround = true
-
     e.spinCooldown = 0
     e.spinAngle = 0
     e.didSpin = false
+    e.fromGround = true
 
     e.dashPress = 0
     e.didAirDash = false
@@ -1123,10 +1122,12 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
         set_mario_animation(m, CHAR_ANIM_START_GROUND_POUND)
         play_sound(SOUND_GENERAL_SWISH_WATER, m.marioObj.header.gfx.cameraToObject)
     elseif (m.actionTimer >= 11 and not e.GPtWP) or (e.GPtWP) then
-        m.vel.y = math.max(m.vel.y - 8, -50)
+        local poSpe = math.min(m.actionTimer / 35, 1)
+        m.vel.y = (e.GPtWP and -55 or -50) * math.sin(math.pi * (e.GPtWP and (0.5 + poSpe * 0.5) or poSpe))
     end
 
     if (m.actionTimer == 11 and not e.GPtWP) or (m.actionTimer == 0 and e.GPtWP) then
+        e.spinSpeed = 1
         set_mario_animation(m, CHAR_ANIM_GROUND_POUND)
         if not e.GPtWP then
             play_mario_sound(m, 0, CHAR_SOUND_GROUND_POUND_WAH)
@@ -1134,31 +1135,69 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
         play_sound_with_freq_scale(SOUND_GENERAL_MOVING_WATER, m.marioObj.header.gfx.cameraToObject, 2)
     end
     
-    if m.actionTimer >= 13 or e.GPtWP then
+    if (m.actionTimer >= 13 or e.GPtWP) and (m.actionTimer < 30) then
         set_mario_particle_flags(m, PARTICLE_PLUNGE_BUBBLE, 0)
     end
 
     if waterResult == WATER_STEP_HIT_FLOOR then
-        play_sound(SOUND_ACTION_TERRAIN_HEAVY_LANDING, m.marioObj.header.gfx.cameraToObject)
-        set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
         set_mario_action(m, ACT_WATER_GROUND_POUND_LAND, 0)
         return
-    elseif m.actionTimer > 30 then
-        set_mario_action(m, ACT_WATER_IDLE, 0)
+    elseif m.actionTimer == 30 then
+        set_mario_animation(m, CHAR_ANIM_WATER_FORWARD_KB)
+        set_anim_to_frame(m, 15)
+    end
+
+    if m.actionTimer >= 30 and (m.floorHeight ~= m.pos.y) then
+        e.spinSpeed = e.spinSpeed * 0.78
+        m.marioObj.header.gfx.angle.x = limit_angle(m.faceAngle.x + (18000 * e.spinSpeed))
+        m.marioBodyState.handState = MARIO_HAND_OPEN
+
+        if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 80 then
+            if e.GPtWP then
+                e.GPtWP = false
+            end
+            set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
+            return
+        end
+        if m.marioObj.header.gfx.animInfo.animFrame == 44 then
+            set_mario_action(m, ACT_WATER_IDLE, 0)
+            return
+        end
     end
     
     m.actionTimer = m.actionTimer + 1
 end
 
 local function act_water_ground_pound_land(m)--WATER GROUND POUND LAND
+    local e = gMarioStateExtras[m.playerIndex]
     local waterResult = perform_water_step(m)
 
-    if waterResult == WATER_STEP_HIT_FLOOR then
+    if m.actionTimer == 0 and waterResult == WATER_STEP_HIT_FLOOR then
+        if e.GPtWP then
+            e.GPtWP = false
+        end
+        e.spinSpeed = 1
+        play_sound(SOUND_ACTION_TERRAIN_HEAVY_LANDING, m.marioObj.header.gfx.cameraToObject)
+        set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
         set_mario_animation(m, CHAR_ANIM_STOP_SLIDE)
+    elseif m.actionTimer == 10 then
+        set_mario_animation(m, CHAR_ANIM_WATER_FORWARD_KB)
+        set_anim_to_frame(m, 20)
     end
 
-    if m.actionTimer > 20 then
-        set_mario_action(m, ACT_WATER_IDLE, 0)
+    if m.actionTimer >= 10 then
+        e.spinSpeed = e.spinSpeed * 0.78
+        m.marioObj.header.gfx.angle.x = limit_angle(m.faceAngle.x + (18000 * e.spinSpeed))
+        m.marioBodyState.handState = MARIO_HAND_OPEN
+
+        if (m.input & INPUT_B_PRESSED) ~= 0 then
+            set_mario_action(m, ACT_WATER_PUNCH, 0)
+            return
+        end
+        if m.marioObj.header.gfx.animInfo.animFrame == 44 then
+            set_mario_action(m, ACT_WATER_IDLE, 0)
+            return
+        end
     end
 
     m.actionTimer = m.actionTimer + 1
@@ -1699,7 +1738,7 @@ local function mario_update(m)
     end
 
     if WATERACTIONS[m.action] then
-        if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 120 then--WATER GROUND POUND
+        if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 80 then--WATER GROUND POUND
             set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
         end
     end
