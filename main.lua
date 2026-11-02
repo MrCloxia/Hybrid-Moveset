@@ -1106,6 +1106,7 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
 
     if (m.input & INPUT_B_PRESSED) ~= 0 then--WATER DIVE
         e.GPtWP = false
+        e.driWater = false
         e.didSwimDive = true
         stop_sounds_from_source(m.marioObj.header.gfx.cameraToObject)
         m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
@@ -1185,9 +1186,8 @@ local function act_water_ground_pound_land(m)--WATER GROUND POUND LAND
     local waterResult = perform_water_step(m)
 
     if m.actionTimer == 0 and waterResult == WATER_STEP_HIT_FLOOR then
-        if e.GPtWP then
-            e.GPtWP = false
-        end
+        e.GPtWP = false
+        e.driWater = false
         e.spinSpeed = 1
         play_sound(SOUND_ACTION_TERRAIN_HEAVY_LANDING, m.marioObj.header.gfx.cameraToObject)
         set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
