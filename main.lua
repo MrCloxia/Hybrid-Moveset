@@ -442,7 +442,7 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
         local wcd = collision_get_temp_wall_collision_data()
         resolve_and_return_wall_collisions_data(m.pos, 0, 120.0, wcd)
 
-        if wcd.numWalls > 0 and movement == WATER_STEP_HIT_WALL then
+        if wcd.numWalls > 0 and (movement == WATER_STEP_HIT_WALL or m.wall ~= nil) then
             for i = 0, (wcd.numWalls - 1) do
                 local wall = wcd.walls[i + 1]
                 local wallAngle = atan2s(wall.normal.z, wall.normal.x);
