@@ -1,6 +1,6 @@
 -- name:\\#ffdd00\\Hybrid \\#ffa600\\Moveset
 -- incompatible: moveset
--- description: \\#ffdd00\\Hybrid \\#ffa600\\Moveset\n\\#ffffff\\created by: \\#ff91ca\\Sibottle\\#ffffff\\ and \\#46ff40\\MrCloxia\n\n\\#ffffff\\A moveset that mixes the best moves from various Super Mario games while also adding its own flairs!\n\nScript built on \\#ff5400\\MrCho\\#00ff00\\quin7\\#ffffff\\'s Moveset 64 Land
+-- description: \\#ffdd00\\Hybrid \\#ffa600\\Moveset\n\\#ffffff\\created by: \\#46ff40\\MrCloxia\\#ffffff\\ and \\#ff91ca\\Sibottle\n\n\\#ffffff\\A moveset that mixes the best moves from various Super Mario games while also adding its own flairs!\n\nScript built on \\#ff5400\\MrCho\\#00ff00\\quin7\\#ffffff\\'s Moveset 64 Land
 
 ------------------------------
 ----- Functions ---------
@@ -483,7 +483,7 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
             end
         end
 
-        if wcd.numWalls > 0 and movement == WATER_STEP_HIT_WALL then--bonk logic
+        if wcd.numWalls > 0 and (movement == WATER_STEP_HIT_WALL or m.wall ~= nil) then--bonk logic
             for i = 0, (wcd.numWalls - 1) do
                 local wall = wcd.walls[i + 1]
                 local wallAngle = atan2s(wall.normal.z, wall.normal.x);
@@ -915,6 +915,7 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     e.airTime = e.airTime + 1
 
     local flatSurface = math.abs(m.floorAngle) < 0x1000
+
     if ((m.floorHeight == m.pos.y) and (m.floor.type == SURFACE_CLASS_VERY_SLIPPERY or m.area.terrainType == TERRAIN_SLIDE) and not flatSurface) then
         local faceAngle = math.abs((m.faceAngle.y - m.intendedYaw + 0x8000) % 0x10000 - 0x8000)
         if faceAngle < 0x2000 then
@@ -1014,8 +1015,11 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         e.didTwiJump = false
         e.inTwiAir = false
         m.actionState = 0
-
-        if m.actionTimer >= 20 then
+        if m.floor.type == SURFACE_BURNING then
+            m.hurtCounter = 12
+            set_mario_action(m, ACT_LAVA_BOOST, 0)
+            return
+        elseif m.actionTimer >= 20 then
             if e.fromGround then
                 if e.didTwiAir then
                     e.twirlSFX = 1
@@ -1091,7 +1095,11 @@ local function act_drill_down(m)--DRILLING DOWN
     end
 
     if stepResult == AIR_STEP_LANDED then
-        if e.fromGround then
+        if m.floor.type == SURFACE_BURNING then
+            m.hurtCounter = 12
+            set_mario_action(m, ACT_LAVA_BOOST, 0)
+            return
+        elseif e.fromGround then
             if (m.input & INPUT_B_PRESSED) ~= 0 then
                 m.squishTimer = 0
                 e.didTwiAir = false
@@ -1199,7 +1207,7 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
             m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y + (e.spinAngle * e.spinSpeed))
         end
 
-        if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 80 then
+        if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 40 then
             e.GPtWP = false
             set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
             return
@@ -1778,7 +1786,7 @@ local function mario_update(m)
     end
 
     if WATERACTIONS[m.action] then
-        if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 80 then--WATER GROUND POUND
+        if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 40 then--WATER GROUND POUND
             set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
         end
     end
@@ -1841,7 +1849,7 @@ local shownOnce = false
 hook_event(HOOK_ON_PLAYER_CONNECTED, function(p)
     if shownOnce then return end
     shownOnce = true
-    djui_popup_create("\n\\#ffdd00\\Hybrid \\#ffa600\\Moveset\n\\#ffffff\\created by:\n\\#ff91ca\\Sibottle\\#ffffff\\ and \\#46ff40\\MrCloxia\n\n\\#ffffff\\Type \\#ffc75e\\'/inputs'\\#ffffff\\ to know more about the moveset.", 5)
+    djui_popup_create("\n\\#ffdd00\\Hybrid \\#ffa600\\Moveset\n\\#ffffff\\created by:\n\\#46ff40\\MrCloxia\\#ffffff\\ and \\#ff91ca\\Sibottle\n\n\\#ffffff\\Type \\#ffc75e\\'/inputs'\\#ffffff\\ to know more about the moveset.", 5)
 end)
 
 ---------------
