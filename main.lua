@@ -797,7 +797,7 @@ local function act_spin_jump_end(m)--GALAXY SPIN END / STAR SPIN END / SPIN JUMP
     end
 end
 
-function act_roll(m)--ROLL (ELEVATOR GAME 64's ROLL)
+function act_roll(m)--ODYSSEY ROLL
     common_slide_action_with_jump(m, ACT_WALKING, ACT_LONG_JUMP, ACT_FREEFALL, CHAR_ANIM_FORWARD_SPINNING)
 
     local intendedDYaw = m.intendedYaw - m.slideYaw;
@@ -914,18 +914,6 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     local e = gMarioStateExtras[m.playerIndex]
     e.airTime = e.airTime + 1
 
-    local flatSurface = math.abs(m.floorAngle) < 0x1000
-
-    if ((m.floorHeight == m.pos.y) and (m.floor.type == SURFACE_CLASS_VERY_SLIPPERY or m.area.terrainType == TERRAIN_SLIDE) and not flatSurface) then
-        local faceAngle = math.abs((m.faceAngle.y - m.intendedYaw + 0x8000) % 0x10000 - 0x8000)
-        if faceAngle < 0x2000 then
-            set_mario_action(m, ACT_BUTT_SLIDE, 0)
-        else
-            set_mario_action(m, ACT_STOMACH_SLIDE, 0)
-        end
-        return
-    end
-
     -- m.faceAngle.y = m.intendedYaw - approach_s32(m.intendedYaw - m.faceAngle.y, 0, 0x300, 0x300);
 
     if m.actionTimer == 0 then
@@ -1012,6 +1000,18 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     end
 
     if stepResult == AIR_STEP_LANDED then
+        local flatSurface = math.abs(m.floorAngle) < 0x1000
+        local steepness = math.sqrt(m.floor.normal.x * m.floor.normal.x + m.floor.normal.z * m.floor.normal.z);
+
+        if ((m.floor.type == SURFACE_CLASS_VERY_SLIPPERY or m.area.terrainType == TERRAIN_SLIDE) and not flatSurface) or m.input & INPUT_ABOVE_SLIDE and steepness > 0.5 then
+            local faceAngle = math.abs((m.faceAngle.y - m.intendedYaw + 0x8000) % 0x10000 - 0x8000)
+            if faceAngle < 0x2000 then
+                set_mario_action(m, ACT_BUTT_SLIDE, 0)
+            else
+                set_mario_action(m, ACT_STOMACH_SLIDE, 0)
+            end
+            return
+        end
         e.didTwiJump = false
         e.inTwiAir = false
         m.actionState = 0
