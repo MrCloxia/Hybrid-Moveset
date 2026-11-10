@@ -683,6 +683,9 @@ local function act_water_pound_jump(m)--WATER POUND JUMP
         set_mario_action(m, ACT_SPECIAL_TRIPLE_JUMP, 0)
         return
     elseif m.actionTimer >= 30 or movement == WATER_STEP_HIT_CEILING then
+        if movement ~= WATER_STEP_HIT_CEILING then
+            m.faceAngle.x = 0x4000
+        end
         set_mario_action(m, ACT_WATER_IDLE, 0)
         return
     end
@@ -1029,7 +1032,11 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
         e.didTwiJump = false
         e.inTwiAir = false
         m.actionState = 0
-        if m.floor.type == SURFACE_BURNING then
+        
+        if (m.floor.type == SURFACE_INSTANT_QUICKSAND) or (m.floor.type == SURFACE_INSTANT_MOVING_QUICKSAND) then
+            set_mario_action(m, ACT_QUICKSAND_DEATH, 0)
+            return
+        elseif m.floor.type == SURFACE_BURNING then
             m.hurtCounter = 12
             set_mario_action(m, ACT_LAVA_BOOST, 0)
             return
@@ -1109,7 +1116,10 @@ local function act_drill_down(m)--DRILLING DOWN
     end
 
     if stepResult == AIR_STEP_LANDED then
-        if m.floor.type == SURFACE_BURNING then
+        if (m.floor.type == SURFACE_INSTANT_QUICKSAND) or (m.floor.type == SURFACE_INSTANT_MOVING_QUICKSAND) then
+            set_mario_action(m, ACT_QUICKSAND_DEATH, 0)
+            return
+        elseif m.floor.type == SURFACE_BURNING then
             m.hurtCounter = 12
             set_mario_action(m, ACT_LAVA_BOOST, 0)
             return
@@ -1149,6 +1159,11 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
     m.vel.x = 0
     m.vel.z = 0
     m.faceAngle.z = 0
+
+    if m.actionTimer == 0 and e.GPtWP then
+        play_sound_with_freq_scale(SOUND_OBJ_DIVING_INTO_WATER, m.marioObj.header.gfx.cameraToObject, 0.73)
+        set_mario_particle_flags(m, PARTICLE_WATER_SPLASH, 0)
+    end
 
     if (m.input & INPUT_B_PRESSED) ~= 0 then--WATER DIVE
         e.GPtWP = false
@@ -1296,7 +1311,7 @@ function act_wall_slide(m)--WALL SLIDE
     mario_set_forward_vel(m, -1)
     m.particleFlags = m.particleFlags | PARTICLE_DUST
 
-    play_sound(SOUND_MOVING_TERRAIN_SLIDE + m.terrainSoundAddend, m.marioObj.header.gfx.cameraToObject)
+    play_sound(SOUND_MOVING_TERRAIN_SLIDE, m.marioObj.header.gfx.cameraToObject)
     set_mario_animation(m, CHAR_ANIM_START_WALLKICK)
 
     if perform_air_step(m, 0) == AIR_STEP_LANDED then
@@ -1534,6 +1549,8 @@ local function mario_on_set_action(m)
             e.driWater = true
         end
         set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
+    elseif m.action == ACT_WATER_JUMP then
+        set_mario_particle_flags(m, PARTICLE_SHALLOW_WATER_SPLASH, 0)
     elseif m.action == ACT_WATER_IDLE  then
         e.GPtWP = false
         e.driWater = false
@@ -1817,7 +1834,7 @@ local function mario_update(m)
     --DEBUG FUNCTION
     if (m.controller.buttonPressed & Y_BUTTON) ~= 0 then
         --m.health = 0x200
-        --spawn_sync_object(id_bhvChuckya, E_MODEL_CHUCKYA, m.pos.x - 300, m.pos.y, m.pos.z - 300, nil)
+        --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z, nil)
         --set_water_level(0, 10000, true)
     end
 
@@ -1843,7 +1860,8 @@ local function inputs_command(msg)
 
 \#b5edff\Water Moveset:
 \#7591ff\(B)\#ffffff\ - Star Swim | \#7591ff\(B)\#d1e3ff\ on water surface\#ffffff\ - Dolphin Dive
-\#c0abff\(Z)\#ffffff\ - Ground Pound]])
+\#c0abff\(Z)\#ffffff\ - Water Pound | \#c0abff\(Z)\#ffdd00\ + \#7591ff\(B)\#ffffff\ - Dive
+\#c0abff\(Z)\#ffdd00\ + \#ff7a7a\(A)\#ffffff\ - Water Pound Jump]])
     if not s.usingHybird then
         djui_chat_message_create([[
 \#ff7a7a\(!) - You're currently not using the moveset in order to perform these actions.
