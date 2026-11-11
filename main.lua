@@ -140,8 +140,14 @@ for i = 0, (MAX_PLAYERS - 1) do
 
     s.usingHybird = true
 
+    e.hObjJumps = 0
+    e.hObjPressed = false
+    e.hObjReset = 0
+
     e.angleDeltaQueue = {}
-    for j = 0, (ANGLE_QUEUE_SIZE - 1) do e.angleDeltaQueue[j] = 0 end
+    for j = 0, (ANGLE_QUEUE_SIZE - 1) do 
+        e.angleDeltaQueue[j] = 0 
+    end
     e.rotAngle = 0
     e.boostTimer = 0
 
@@ -1539,6 +1545,10 @@ local function mario_on_set_action(m)
         e.fromWall = false
     end
 
+    if m.heldObj == nil then
+        e.hObjJumps = 0
+    end
+
     if m.action == ACT_WALL_SLIDE then
         m.vel.y = 0.0
     elseif m.action == ACT_GROUND_POUND and m.prevAction == ACT_SIDE_FLIP then
@@ -1606,6 +1616,33 @@ local function mario_update(m)
 
     if e.spinCooldown > 0 then
         e.spinCooldown = e.spinCooldown - 1
+    end
+
+    --GRABBED TRANSITION TO DOUBLE & TRIPLE JUMPS
+    if m.heldObj ~= nil then
+        if (m.action & ACT_FLAG_AIR) ~= 0 and not e.hObjPressed and (m.action ~= ACT_HOLD_FREEFALL or m.action ~= ACT_HOLD_FREEFALL_LAND) then
+            if e.hObjJumps == 2 and m.forwardVel < 10 then--too slow to perfom an triple jump.
+                e.hObjJumps = 1
+            else
+                e.hObjJumps = e.hObjJumps + 1
+            end
+
+            if e.hObjJumps >= 2 then
+                m.vel.y = (e.hObjJumps == 3 and 65 or (m.vel.y + 16))
+                play_character_sound_offset(m, (e.hObjJumps == 3 and CHAR_SOUND_YAHOO_WAHA_YIPPEE or CHAR_SOUND_HOOHOO), (e.hObjJumps == 3 and math.random(0, 4) << 16 or 0))
+            end
+            e.hObjPressed = true
+        elseif (m.action & ACT_FLAG_AIR) == 0 then
+            e.hObjPressed = false
+        end
+
+        if (m.action == ACT_HOLD_IDLE or m.action == ACT_HOLD_WALKING) or e.hObjJumps == 3 then
+            if e.hObjReset >= 8 then
+                e.hObjReset = e.hObjReset + 1
+            else
+                e.hObjJumps = 0
+            end
+        end
     end
 
     --ESCAPE OUT OF BEING GRABBED
@@ -1834,7 +1871,7 @@ local function mario_update(m)
     --DEBUG FUNCTION
     if (m.controller.buttonPressed & Y_BUTTON) ~= 0 then
         --m.health = 0x200
-        --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z, nil)
+        --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
         --set_water_level(0, 10000, true)
     end
 
