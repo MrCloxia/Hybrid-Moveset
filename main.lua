@@ -733,12 +733,11 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
     end
     local stepResult = perform_air_step(m, 0)
     local e = gMarioStateExtras[m.playerIndex]
-    m.marioBodyState.handState = MARIO_HAND_OPEN
     update_air_without_turn(m);
 
     if m.actionTimer == 0 then
-        set_mario_animation(m, CHAR_ANIM_START_TWIRL)
-        e.spinSpeed = 1
+        set_mario_animation(m, CHAR_ANIM_TWIRL)
+        smlua_anim_util_set_animation(m.marioObj, (e.fromGround and "star_spin_ground" or "star_spin"))
     end
 
     if stepResult == AIR_STEP_HIT_LAVA_WALL then
@@ -748,16 +747,18 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
 
     if stepResult == AIR_STEP_LANDED then
         if e.fromGround then
-            if m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_TWIRL_LAND and (m.input & INPUT_NONZERO_ANALOG) == 0 then
+            if m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_LAND_FROM_SINGLE_JUMP and (m.input & INPUT_NONZERO_ANALOG) == 0 then
                 play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
-                set_mario_animation(m, CHAR_ANIM_TWIRL_LAND)
-            elseif m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_TWIRL_LAND then
+                set_mario_animation(m, CHAR_ANIM_LAND_FROM_SINGLE_JUMP)
+            elseif m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_LAND_FROM_SINGLE_JUMP then
                 m.forwardVel = 0
-            elseif (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
+            end
+            
+            if (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
                 set_mario_action(m, ACT_WALKING, 0)
             end
 
-            if m.marioObj.header.gfx.animInfo.animFrame == 8 then
+            if m.marioObj.header.gfx.animInfo.animFrame >= 35 then
                 set_mario_action(m, ACT_IDLE, 0)
             end
         else
@@ -766,16 +767,14 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
         return
     end
 
-    if e.spinSpeed > 0.02 then
+    if m.actionTimer < 10 then
         if stepResult == AIR_STEP_HIT_WALL and not e.fromGround then
             stop_sounds_from_source(m.marioObj.header.gfx.cameraToObject)
             mario_bonk_reflection(m, false)
             m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
             play_mario_sound(m, 0, CHAR_SOUND_UH)
-            e.spinSpeed = 0
         end
         e.spinSpeed = e.spinSpeed * 0.78
-        m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y + (65535 * e.spinSpeed))
         set_mario_particle_flags(m, PARTICLE_SPARKLES | ((not e.fromGround and m.actionTimer == 3) and PARTICLE_MIST_CIRCLE or 0), 0)
     else
         set_mario_action(m, ACT_SPIN_JUMP_END, 0)
@@ -788,7 +787,7 @@ end
 local function act_spin_jump_end(m)--GALAXY SPIN END / STAR SPIN END / SPIN JUMP END
     local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
     local e = gMarioStateExtras[m.playerIndex]
-    set_mario_animation(m, CHAR_ANIM_GENERAL_FALL)
+    
     m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y)
 
     if stepResult == AIR_STEP_HIT_LAVA_WALL then
@@ -799,7 +798,7 @@ local function act_spin_jump_end(m)--GALAXY SPIN END / STAR SPIN END / SPIN JUMP
     if stepResult == AIR_STEP_GRABBED_LEDGE then
         e.didSpin = false
         set_mario_action(m, ACT_LEDGE_GRAB, 0)
-    elseif stepResult == AIR_STEP_NONE and e.fromGround or stepResult == AIR_STEP_LANDED then
+    elseif stepResult == AIR_STEP_LANDED then
         set_mario_action(m, ACT_FREEFALL_LAND, 0)
         return
     end
@@ -1218,13 +1217,12 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
         set_mario_action(m, ACT_WATER_GROUND_POUND_LAND, 0)
         return
     elseif m.actionTimer == 30 then
-        set_mario_animation(m, CHAR_ANIM_WATER_FORWARD_KB)
-        set_anim_to_frame(m, 15)
+        set_anim_to_frame(m, 5)
+        smlua_anim_util_set_animation(m.marioObj, "water_pound_land")
     end
 
     if m.actionTimer >= 30 and (m.floorHeight ~= m.pos.y) then
         e.spinSpeed = e.spinSpeed * 0.78
-        m.marioObj.header.gfx.angle.x = limit_angle(m.faceAngle.x + (18000 * e.spinSpeed))
         m.marioBodyState.handState = MARIO_HAND_OPEN
 
         if e.driWater then
@@ -1243,7 +1241,7 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
             return
         end
 
-        if m.marioObj.header.gfx.animInfo.animFrame == 44 then
+        if m.actionTimer >= 41 then
             set_mario_action(m, ACT_WATER_IDLE, 0)
             return
         end
@@ -1262,10 +1260,8 @@ local function act_water_ground_pound_land(m)--WATER GROUND POUND LAND
         e.spinSpeed = 1
         play_sound(SOUND_ACTION_TERRAIN_HEAVY_LANDING, m.marioObj.header.gfx.cameraToObject)
         set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
-        set_mario_animation(m, CHAR_ANIM_STOP_SLIDE)
-    elseif m.actionTimer == 10 then
-        set_mario_animation(m, CHAR_ANIM_WATER_FORWARD_KB)
-        set_anim_to_frame(m, 20)
+        set_anim_to_frame(m, 0)
+        smlua_anim_util_set_animation(m.marioObj, "water_pound_land")
     end
 
     if m.actionTimer <= 10 and (m.input & INPUT_A_PRESSED) ~= 0 then--WATER POUND JUMP
@@ -1277,14 +1273,13 @@ local function act_water_ground_pound_land(m)--WATER GROUND POUND LAND
 
     if m.actionTimer >= 10 then
         e.spinSpeed = e.spinSpeed * 0.78
-        m.marioObj.header.gfx.angle.x = limit_angle(m.faceAngle.x + (18000 * e.spinSpeed))
         m.marioBodyState.handState = MARIO_HAND_OPEN
 
         if (m.input & INPUT_B_PRESSED) ~= 0 then
             set_mario_action(m, ACT_WATER_PUNCH, 0)
             return
         end
-        if m.marioObj.header.gfx.animInfo.animFrame == 44 then
+        if m.actionTimer >= 19 then
             set_mario_action(m, ACT_WATER_IDLE, 0)
             return
         end
@@ -1629,6 +1624,7 @@ local function mario_update(m)
 
             if e.hObjJumps >= 2 then
                 m.vel.y = (e.hObjJumps == 3 and 65 or (m.vel.y + 16))
+                smlua_anim_util_set_animation(m.marioObj, (e.hObjJumps == 2 and "double_jump_holding" or "triple_jump_holding"))
                 play_character_sound_offset(m, (e.hObjJumps == 3 and CHAR_SOUND_YAHOO_WAHA_YIPPEE or CHAR_SOUND_HOOHOO), (e.hObjJumps == 3 and math.random(0, 4) << 16 or 0))
             end
             e.hObjPressed = true
@@ -1871,7 +1867,7 @@ local function mario_update(m)
     --DEBUG FUNCTION
     if (m.controller.buttonPressed & Y_BUTTON) ~= 0 then
         --m.health = 0x200
-        --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
+        spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
         --set_water_level(0, 10000, true)
     end
 
