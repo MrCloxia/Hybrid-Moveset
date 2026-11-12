@@ -1368,6 +1368,60 @@ local function act_air_hit_wall(m)
     return set_mario_animation(m, CHAR_ANIM_START_WALLKICK)
 end
 
+function act_ground_pound(m)
+    local stepResult
+    local yOffset
+
+    play_sound_if_no_flag(m, SOUND_ACTION_THROW, MARIO_ACTION_SOUND_PLAYED);
+
+    --AIR DIVE
+    if (m.input & INPUT_B_PRESSED) ~= 0 then
+        mario_set_forward_vel(m, 22.2)
+        m.vel.y = 37.7
+        set_mario_action(m, ACT_DIVE, 0)
+        m.faceAngle.y = m.intendedYaw
+        set_mario_particle_flags(m, PARTICLE_MIST_CIRCLE, 0)
+        play_sound(SOUND_GENERAL_SWISH_WATER, m.marioObj.header.gfx.cameraToObject)
+        
+        return
+    end
+
+    if (m.actionState == 0) then
+        if (m.actionTimer < 10) then
+            yOffset = 20 - 2 * m.actionTimer
+            if (m.pos.y + yOffset + 160.0 < m.ceilHeight) then
+                m.pos.y = m.pos.y + yOffset
+                m.peakHeight = m.pos.y
+                vec3f_copy(m.marioObj.header.gfx.pos, m.pos)
+            end
+        end
+
+        m.vel.y = -50.0
+        mario_set_forward_vel(m, 0.0)
+
+        set_character_animation(m, (m.actionArg == 0 and CHAR_ANIM_START_GROUND_POUND or CHAR_ANIM_TRIPLE_JUMP_GROUND_POUND))
+        if (m.actionTimer == 0) then
+            play_sound(SOUND_ACTION_SPIN, m.marioObj.header.gfx.cameraToObject)
+        end
+
+        m.actionTimer = m.actionTimer + 1
+        if (m.actionTimer >= m.marioObj.header.gfx.animInfo.curAnim.loopEnd + 4) then
+            play_character_sound(m, CHAR_SOUND_GROUND_POUND_WAH)
+            m.actionState = 1
+        end
+    else
+        set_character_animation(m, CHAR_ANIM_GROUND_POUND)
+
+        stepResult = perform_air_step(m, 0);
+        if (stepResult == AIR_STEP_LANDED) then
+            play_mario_heavy_landing_sound(m, SOUND_ACTION_TERRAIN_HEAVY_LANDING)
+            set_mario_particle_flags(m, (PARTICLE_MIST_CIRCLE | PARTICLE_HORIZONTAL_STAR), false);
+            set_mario_action(m, ACT_GROUND_POUND_LAND, 0)
+            if (m.playerIndex == 0) then set_camera_shake_from_hit(SHAKE_GROUND_POUND) end
+        end
+    end
+end
+
 local function act_emote_sit(m)--EMOTE SIT
     local e = gMarioStateExtras[m.playerIndex]
     local s = gPlayerSyncTable[m.playerIndex]
@@ -1720,16 +1774,6 @@ local function mario_update(m)
         set_mario_action(m, ACT_GROUND_POUND, 0)
     end
 
-    --AIR DIVE
-    if m.action == ACT_GROUND_POUND and (m.input & INPUT_B_PRESSED) ~= 0 then
-        mario_set_forward_vel(m, 22.2)
-        m.vel.y = 37.7
-        set_mario_action(m, ACT_DIVE, 0)
-        m.faceAngle.y = m.intendedYaw
-        set_mario_particle_flags(m, PARTICLE_MIST_CIRCLE, 0)
-        play_sound(SOUND_GENERAL_SWISH_WATER, m.marioObj.header.gfx.cameraToObject)
-    end
-
     --GROUND POUND JUMP
     if (m.action == ACT_GROUND_POUND_LAND or (e.fromGround and m.action == ACT_DRILL_DOWN)) and (m.input & INPUT_A_PRESSED) ~= 0 and m.floor.type ~= SURFACE_BURNING then
         if e.groundPoundCooldown <= 0 then
@@ -1946,3 +1990,4 @@ hook_mario_action(ACT_WATER_GROUND_POUND, { every_frame = act_water_ground_pound
 hook_mario_action(ACT_WATER_GROUND_POUND_LAND, { every_frame = act_water_ground_pound_land }, INT_GROUND_POUND)
 hook_mario_action(ACT_WATER_POUND_JUMP, { every_frame = act_water_pound_jump})
 hook_mario_action(ACT_EMOTE_SIT, { every_frame = act_emote_sit })
+hook_mario_action(ACT_GROUND_POUND, { every_frame = act_ground_pound })
