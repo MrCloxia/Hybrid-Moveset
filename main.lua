@@ -1225,8 +1225,8 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
         set_mario_action(m, ACT_WATER_GROUND_POUND_LAND, 0)
         return
     elseif m.actionTimer == 30 then
-        set_anim_to_frame(m, 5)
-        smlua_anim_util_set_animation(m.marioObj, "water_pound_land")
+        set_anim_to_frame(m, 0)
+        smlua_anim_util_set_animation(m.marioObj, "water_pound_hover")
     end
 
     if m.actionTimer >= 30 and (m.floorHeight ~= m.pos.y) then
@@ -1249,7 +1249,7 @@ local function act_water_ground_pound(m)--WATER GROUND POUND
             return
         end
 
-        if m.actionTimer >= 41 then
+        if m.actionTimer >= 50 then
             set_mario_action(m, ACT_WATER_IDLE, 0)
             return
         end
