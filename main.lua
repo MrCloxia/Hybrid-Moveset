@@ -62,7 +62,8 @@ local SPINACTIONS = {
     [ACT_FLYING] = true,
     [ACT_WATER_JUMP] = true,
     [ACT_AIR_DASH_END] = true,
-    [ACT_BUTT_SLIDE_AIR] = true
+    [ACT_BUTT_SLIDE_AIR] = true,
+    [ACT_TOP_OF_POLE_JUMP] = true
 }
 
 local AIRDASHACTIONS = {
@@ -94,7 +95,8 @@ local SHINESPINACTIONS = {
     [ACT_SIDE_FLIP] = true,
     [ACT_TWIRL_N_PLACE] = true,
     [ACT_AIR_DASH_END] = true,
-    [ACT_SPIN_JUMP_END] = true
+    [ACT_SPIN_JUMP_END] = true,
+    [ACT_TOP_OF_POLE_JUMP] = true
 }
 
 local WATERACTIONS = {
@@ -123,7 +125,9 @@ local GROUNDACTIONS = {
     [ACT_BACKFLIP_LAND] = true,
     [ACT_SIDE_FLIP_LAND] = true,
     [ACT_FREEFALL_LAND] = true,
-    [ACT_QUICKSAND_JUMP_LAND] = true
+    [ACT_QUICKSAND_JUMP_LAND] = true,
+    [ACT_TURNING_AROUND] = true,
+    [ACT_FINISH_TURNING_AROUND] = true
 }
 
 local convert_actions = {
@@ -212,6 +216,12 @@ for i = 0, (MAX_PLAYERS - 1) do
 
     e.didSwimDive = false
 
+    e.grabEscape = 0
+    e.nexAnim = 1
+    e.animTimer = 0
+    e.grabStruggle = false
+    e.lastAnaDir = 0
+
     e.syncedHeadAngle = {}
     e.syncedHeadAngle.x = 0
     e.syncedHeadAngle.y = 0
@@ -228,10 +238,6 @@ for i = 0, (MAX_PLAYERS - 1) do
     [271] = true,
     [280] = true
     }
-
-    e.grabEscape = 0
-    e.grabStruggle = false
-    e.lastAnaDir = 0
 end
 
 local hybird_cmd = function(_, value)
@@ -738,7 +744,7 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
     update_air_without_turn(m);
 
     if m.actionTimer == 0 then
-        set_mario_animation(m, CHAR_ANIM_TWIRL)
+        set_mario_animation(m, CHAR_ANIM_A_POSE)--Needs to be different cause for an example, doing Star Spin then an Sunshine Spin, it'll not actually change the animation to the custom one due to it before being the same animation. 
         smlua_anim_util_set_animation(m.marioObj, (e.fromGround and "star_spin_ground" or "star_spin"))
     end
 
@@ -1424,6 +1430,121 @@ function act_ground_pound(m)
     end
 end
 
+function act_grabbed(m)--ESCAPE OUT OF AN GRAB
+    local e = gMarioStateExtras[m.playerIndex]
+    local anaDir = 0
+
+    if (m.marioObj.oInteractStatus & INT_STATUS_MARIO_UNK2) == 0 then--perform to escape
+        if m.actionTimer == 0 then
+            m.actionArg = 0--remove vanilla niche escape grab
+            set_character_animation(m, CHAR_ANIM_BEING_GRABBED)
+        end
+
+        if m.heldObj ~= 0 then
+            mario_drop_held_object(m)
+        end
+
+        if m.usedObj ~= nil then
+            m.heldByObj = m.usedObj
+        end
+
+        if m.heldByObj ~= nil then
+            m.marioObj.header.gfx.pos.x = m.heldByObj.oPosX + 100 * sins(m.heldByObj.oMoveAngleYaw) + 1 * coss(m.heldByObj.oMoveAngleYaw)
+            m.marioObj.header.gfx.pos.z = m.heldByObj.oPosZ + 100 * coss(m.heldByObj.oMoveAngleYaw) - 1 * sins(m.heldByObj.oMoveAngleYaw)
+            m.marioObj.header.gfx.pos.y = m.heldByObj.oPosY + 50
+            m.marioObj.header.gfx.angle.y = m.heldByObj.oMoveAngleYaw
+            m.faceAngle.y = m.heldByObj.oMoveAngleYaw
+
+            vec3f_copy(m.pos, m.marioObj.header.gfx.pos)
+        end
+
+        if math.abs(m.controller.stickX) > math.abs(m.controller.stickY) then
+            if m.controller.stickX > 30 then
+                anaDir = 1
+            elseif m.controller.stickX < -30 then
+                anaDir = 2
+            end
+        else
+            if m.controller.stickY > 30 then
+                anaDir = 3
+            elseif m.controller.stickY < -30 then
+                anaDir = 4
+            end
+        end
+
+        if anaDir ~= 0 and anaDir ~= e.lastAnaDir then
+            e.grabStruggle = true
+            e.lastAnaDir = anaDir
+        elseif e.lastAnaDir == anaDir then
+            e.grabStruggle = false
+        elseif anaDir == 0 then
+            e.lastAnaDir = 0
+        end
+
+        if e.animTimer == 8 and e.grabEscape >= 1 then
+            set_character_animation(m, CHAR_ANIM_BEING_GRABBED)
+        end
+
+        if (m.input & INPUT_A_PRESSED) ~= 0 or (m.input & INPUT_B_PRESSED) ~= 0 or e.grabStruggle then
+            if e.grabEscape <= 33 then
+                e.animTimer = 0
+                e.grabEscape = e.grabEscape + 1
+
+                if e.nexAnim >= 3 then
+                    e.nexAnim = 1
+                else
+                    e.nexAnim = e.nexAnim + 1
+                end
+
+                poundSFXs = {SOUND_GENERAL_SHORT_POUND1, SOUND_GENERAL_SHORT_POUND2, SOUND_GENERAL_SHORT_POUND3, SOUND_GENERAL_SHORT_POUND4, SOUND_GENERAL_SHORT_POUND5, SOUND_GENERAL_SHORT_POUND6}
+                play_sound_with_freq_scale(poundSFXs[math.random(1, #poundSFXs)], m.marioObj.header.gfx.cameraToObject, random_float(0.63, 1.33))
+
+                strugAnim_v = {CHAR_ANIM_FIRST_PUNCH, CHAR_ANIM_SECOND_PUNCH, CHAR_ANIM_AIR_KICK}
+                strugAnim = {"struggle1", "struggle2", "struggle3"}
+                m.marioObj.header.gfx.animInfo.animFrame = 0
+                set_character_animation(m, strugAnim_v[e.nexAnim])
+                smlua_anim_util_set_animation(m.marioObj, strugAnim[e.nexAnim])
+
+                if e.grabEscape > 1 and m.playerIndex == 0 then
+                    play_sound_with_freq_scale(SOUND_MENU_YOSHI_GAIN_LIVES, m.marioObj.header.gfx.cameraToObject, (e.grabEscape / 100) + 0.98)
+                    queue_rumble_data_mario(m, 1, 30)
+                end
+
+                if e.grabEscape > 0 and e.grabEscape % 8 == 0 then
+                    strugVoices = {CHAR_SOUND_EEUH, CHAR_SOUND_UH, CHAR_SOUND_HRMM}
+                    selVoice = math.random(1, #strugVoices)
+                    m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
+                    play_mario_sound(m, 0, strugVoices[selVoice])
+                end
+                set_camera_shake_from_hit(SHAKE_SHOCK)
+            else
+                play_sound_with_freq_scale(SOUND_GENERAL_RACE_GUN_SHOT, m.marioObj.header.gfx.cameraToObject, 2)
+                e.grabEscape = 0
+                e.grabStruggle = false
+                e.lastAnaDir = 0
+                m.heldByObj = nil
+                m.usedObj = nil
+                set_mario_action(m, ACT_FORWARD_AIR_KB, 0)
+                m.forwardVel = 0.5
+                m.vel.y = 23
+                return
+            end
+        end
+    else--failed to escape
+        if m.usedObj ~= nil then
+            m.faceAngle.y = m.usedObj.oMoveAngleYaw
+        end
+        m.heldByObj = nil
+        m.usedObj = nil
+
+        set_mario_action(m, (m.forwardVel >= 0 and ACT_THROWN_FORWARD or ACT_THROWN_BACKWARD), 0)
+        return 0
+    end
+
+    e.animTimer = e.animTimer + 1
+    m.actionTimer = m.actionTimer + 1
+end
+
 local function act_emote_sit(m)--EMOTE SIT
     local e = gMarioStateExtras[m.playerIndex]
     local s = gPlayerSyncTable[m.playerIndex]
@@ -1627,6 +1748,7 @@ local function mario_on_set_action(m)
         e.grabEscape = 0
         e.grabStruggle = false
         e.lastAnaDir = 0
+        e.nexAnim = 1
     elseif m.action == ACT_ROLL then
         mario_set_forward_vel(m, math.max(m.forwardVel * 1.05, 30))
     end
@@ -1702,65 +1824,6 @@ local function mario_update(m)
         end
     end
 
-    --ESCAPE OUT OF BEING GRABBED
-    if m.action == ACT_GRABBED then
-        if m.heldByObj ~= nil then
-            m.pos.x = m.heldByObj.oPosX + 100 * sins(m.heldByObj.oMoveAngleYaw) + 1 * coss(m.heldByObj.oMoveAngleYaw)
-            m.pos.z = m.heldByObj.oPosZ + 100 * coss(m.heldByObj.oMoveAngleYaw) - 1 * sins(m.heldByObj.oMoveAngleYaw)
-            m.pos.y = m.heldByObj.oPosY + 50
-            m.faceAngle.y = m.heldByObj.oMoveAngleYaw
-        end
-
-        if math.abs(m.controller.stickX) > math.abs(m.controller.stickY) then
-            if m.controller.stickX > 30 then
-                anaDir = 1
-            elseif m.controller.stickX < -30 then
-                anaDir = 2
-            end
-        else
-            if m.controller.stickY > 30 then
-                anaDir = 3
-            elseif m.controller.stickY < -30 then
-                anaDir = 4
-            end
-        end
-
-        if anaDir ~= 0 and anaDir ~= e.lastAnaDir then
-            e.grabStruggle = true
-            e.lastAnaDir = anaDir
-        elseif e.lastAnaDir == anaDir then
-            e.grabStruggle = false
-        elseif anaDir == 0 then
-            e.lastAnaDir = 0
-        end
-
-        if (m.input & INPUT_A_PRESSED) ~= 0 or (m.input & INPUT_B_PRESSED) ~= 0 or e.grabStruggle then
-            if e.grabEscape <= 33 then
-                e.grabEscape = e.grabEscape + 1
-                poundSFXs = {SOUND_GENERAL_SHORT_POUND1, SOUND_GENERAL_SHORT_POUND2, SOUND_GENERAL_SHORT_POUND3, SOUND_GENERAL_SHORT_POUND4, SOUND_GENERAL_SHORT_POUND5, SOUND_GENERAL_SHORT_POUND6}
-                play_sound_with_freq_scale(poundSFXs[math.random(1, 6)], m.marioObj.header.gfx.cameraToObject, random_float(0.63, 1.33))
-                if e.grabEscape > 1 and m.playerIndex == 0 then
-                    play_sound_with_freq_scale(SOUND_MENU_YOSHI_GAIN_LIVES, m.marioObj.header.gfx.cameraToObject, (e.grabEscape / 100) + 0.98)
-                end
-                if e.grabEscape > 0 and e.grabEscape % 5 == 0 then
-                    strugVoices = {CHAR_SOUND_EEUH, CHAR_SOUND_UH, CHAR_SOUND_HRMM}
-                    selVoice = math.random(1, #strugVoices)
-                    play_mario_sound(m, 0, strugVoices[selVoice])
-                end
-                set_camera_shake_from_hit(SHAKE_SHOCK)
-            else
-                play_sound_with_freq_scale(SOUND_GENERAL_RACE_GUN_SHOT, m.marioObj.header.gfx.cameraToObject, 2)
-                set_mario_action(m, ACT_FORWARD_AIR_KB, 0)
-                m.forwardVel = 0
-                m.vel.y = 23
-                e.grabEscape = 0
-                e.grabStruggle = false
-                e.lastAnaDir = 0
-                return
-            end
-        end
-    end
-
     --FASTER MONKEY BARS
     if m.action == ACT_HANG_MOVING then
         local mag = math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY)
@@ -1776,8 +1839,8 @@ local function mario_update(m)
         end
     end
 
-    --LONG JUMP GROUND POUND
-    if m.action == ACT_LONG_JUMP and (m.input & INPUT_Z_PRESSED) ~= 0 then
+    --LONG JUMP & TOP OF THE POLE GROUND POUND
+    if (m.action == ACT_LONG_JUMP or m.action == ACT_TOP_OF_POLE_JUMP) and (m.input & INPUT_Z_PRESSED) ~= 0 then
         set_mario_action(m, ACT_GROUND_POUND, 0)
     end
 
@@ -1918,7 +1981,8 @@ local function mario_update(m)
     --DEBUG FUNCTION
     if (m.controller.buttonPressed & Y_BUTTON) ~= 0 then
         --m.health = 0x200
-        -- spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
+        --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
+        --spawn_sync_object(id_bhvChuckya, E_MODEL_CHUCKYA, m.pos.x, m.pos.y, m.pos.z - 500, nil)
         --set_water_level(0, 10000, true)
     end
 
@@ -1980,7 +2044,8 @@ hook_event(HOOK_MARIO_UPDATE, no_fall_damage)
 hook_event(HOOK_ON_SET_MARIO_ACTION, mario_on_set_action)
 hook_event(HOOK_BEFORE_SET_MARIO_ACTION, before_set_mario_action)
 
-hook_mario_action(ACT_GROUND_POUND, { every_frame = act_ground_pound })
+hook_mario_action(ACT_GROUND_POUND, { every_frame = act_ground_pound }, INT_GROUND_POUND)
+hook_mario_action(ACT_GRABBED, { every_frame = act_grabbed })
 hook_mario_action(ACT_FAKE_FREEFALL, { every_frame = act_fake_freefall })
 hook_mario_action(ACT_SPIN_JUMP, { every_frame = act_spin_jump }, INT_KICK)
 hook_mario_action(ACT_SPIN_JUMP_END, { every_frame = act_spin_jump_end })
