@@ -830,6 +830,10 @@ end
 function act_roll(m)--ODYSSEY ROLL
     common_slide_action_with_jump(m, ACT_WALKING, ACT_LONG_JUMP, ACT_FREEFALL, CHAR_ANIM_FORWARD_SPINNING)
 
+    if m.action == ACT_LONG_JUMP then
+        return
+    end
+
     local steepness = math.sqrt(m.floor.normal.x * m.floor.normal.x + m.floor.normal.z * m.floor.normal.z);
     local intendedDYaw = m.intendedYaw - m.slideYaw;
     local forward = coss(intendedDYaw);
