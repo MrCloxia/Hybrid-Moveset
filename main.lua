@@ -32,6 +32,8 @@ ACT_WATER_DIVE = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING | ACT_FLAG_ATTACKING)
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING | ACT_FLAG_ATTACKING)
 ACT_WATER_POUND_JUMP = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
+ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
 -- gLevelValues.entryLevel = LEVEL_SA--LEVEL START DEBUG
@@ -1521,27 +1523,32 @@ local function act_emote_sit(m)--EMOTE SIT
 
     local headRotLimit = 0x3F00
 
-    if (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
-        if (m.controller.stickX > 0) then
-            e.syncedHeadAngle.y = approach_yaw(e.syncedHeadAngle.y,-headRotLimit, math.abs(m.controller.stickX * 20))
-        else
-            e.syncedHeadAngle.y = approach_yaw(e.syncedHeadAngle.y,headRotLimit, math.abs(m.controller.stickX * 20))
+    if m.actionTimer < 21 then
+        m.controller.stickX = m.controller.stickX * 0
+        m.controller.stickY = m.controller.stickY * 0
+    else
+        if (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
+            if (m.controller.stickX > 0) then
+                e.syncedHeadAngle.y = approach_yaw(e.syncedHeadAngle.y,-headRotLimit, math.abs(m.controller.stickX * 20))
+            else
+                e.syncedHeadAngle.y = approach_yaw(e.syncedHeadAngle.y,headRotLimit, math.abs(m.controller.stickX * 20))
+            end
+
+            if (m.controller.stickY > 0) then
+                e.syncedHeadAngle.x = approach_yaw(e.syncedHeadAngle.x,-headRotLimit/2, math.abs(m.controller.stickY * 20))
+            else
+                e.syncedHeadAngle.x = approach_yaw(e.syncedHeadAngle.x,headRotLimit/2, math.abs(m.controller.stickY * 20))
+            end
         end
 
-        if (m.controller.stickY > 0) then
-            e.syncedHeadAngle.x = approach_yaw(e.syncedHeadAngle.x,-headRotLimit/2, math.abs(m.controller.stickY * 20))
-        else
-            e.syncedHeadAngle.x = approach_yaw(e.syncedHeadAngle.x,headRotLimit/2, math.abs(m.controller.stickY * 20))
+        local torsoTilt = math.sin(m.actionTimer * 0.043) * 0x300
+        if m.actionState == 0 then
+            m.marioBodyState.torsoAngle.x = limit_angle(torsoTilt)
         end
-    end
 
-    local torsoTilt = math.sin(m.actionTimer * 0.043) * 0x300
-    if m.actionState == 0 then
-        m.marioBodyState.torsoAngle.x = limit_angle(torsoTilt)
+        m.marioBodyState.headAngle.x = e.syncedHeadAngle.x - torsoTilt
+        m.marioBodyState.headAngle.y = e.syncedHeadAngle.y
     end
-
-    m.marioBodyState.headAngle.x = e.syncedHeadAngle.x - torsoTilt
-    m.marioBodyState.headAngle.y = e.syncedHeadAngle.y
 
     m.actionTimer = m.actionTimer + 1
 end
@@ -1973,6 +1980,7 @@ hook_event(HOOK_MARIO_UPDATE, no_fall_damage)
 hook_event(HOOK_ON_SET_MARIO_ACTION, mario_on_set_action)
 hook_event(HOOK_BEFORE_SET_MARIO_ACTION, before_set_mario_action)
 
+hook_mario_action(ACT_GROUND_POUND, { every_frame = act_ground_pound })
 hook_mario_action(ACT_FAKE_FREEFALL, { every_frame = act_fake_freefall })
 hook_mario_action(ACT_SPIN_JUMP, { every_frame = act_spin_jump }, INT_KICK)
 hook_mario_action(ACT_SPIN_JUMP_END, { every_frame = act_spin_jump_end })
@@ -1989,5 +1997,6 @@ hook_mario_action(ACT_WATER_DIVE, { every_frame = act_water_dive})
 hook_mario_action(ACT_WATER_GROUND_POUND, { every_frame = act_water_ground_pound }, INT_GROUND_POUND)
 hook_mario_action(ACT_WATER_GROUND_POUND_LAND, { every_frame = act_water_ground_pound_land }, INT_GROUND_POUND)
 hook_mario_action(ACT_WATER_POUND_JUMP, { every_frame = act_water_pound_jump})
+hook_mario_action(ACT_HOLD_DOUBLE_JUMP, { every_frame = act_hold_double_jump})
+hook_mario_action(ACT_HOLD_TRIPLE_JUMP, { every_frame = act_hold_triple_jump})
 hook_mario_action(ACT_EMOTE_SIT, { every_frame = act_emote_sit })
-hook_mario_action(ACT_GROUND_POUND, { every_frame = act_ground_pound })
