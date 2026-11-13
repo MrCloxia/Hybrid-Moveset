@@ -130,6 +130,14 @@ local GROUNDACTIONS = {
     [ACT_FINISH_TURNING_AROUND] = true
 }
 
+local HOLDJUMPCANCEL = {
+    [ACT_HOLD_FREEFALL] = true,
+    [ACT_HOLD_FREEFALL_LAND] = true,
+    [ACT_HOLD_BUTT_SLIDE] = true,
+    [ACT_HOLD_BUTT_SLIDE_STOP] = true,
+    [ACT_HOLD_STOMACH_SLIDE] = true
+}
+
 local convert_actions = {
     [ACT_AIR_HIT_WALL] = ACT_CUSTOM_AIR_HIT_WALL,
     [ACT_SLIDE_KICK] = ACT_ROLL,
@@ -951,7 +959,7 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
     update_lava_boost_or_twirling(m)
     update_air_without_turn(m);
 
-    if (m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_TWIRL_LAND or m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_TRIPLE_JUMP_LAND) and m.actionTimer < 25 or e.inTwiAir then
+    if not (m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_TWIRL_LAND or m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_TRIPLE_JUMP_LAND) or e.inTwiAir then
         m.marioBodyState.handState = MARIO_HAND_OPEN
     end
 
@@ -1789,7 +1797,7 @@ local function mario_update(m)
 
     --GRABBED TRANSITION TO DOUBLE & TRIPLE JUMPS
     if m.heldObj ~= nil then
-        if (m.action & ACT_FLAG_AIR) ~= 0 and not e.hObjPressed and (m.action ~= ACT_HOLD_FREEFALL or m.action ~= ACT_HOLD_FREEFALL_LAND) then
+        if (m.action & ACT_FLAG_AIR) ~= 0 and not e.hObjPressed and not HOLDJUMPCANCEL[m.action] then
             if e.hObjJumps == 2 and m.forwardVel < 10 then--too slow to perfom an triple jump.
                 e.hObjJumps = 1
             else
@@ -1802,12 +1810,14 @@ local function mario_update(m)
                 play_character_sound_offset(m, (e.hObjJumps == 3 and CHAR_SOUND_YAHOO_WAHA_YIPPEE or CHAR_SOUND_HOOHOO), (e.hObjJumps == 3 and math.random(0, 4) << 16 or 0))
             end
             e.hObjPressed = true
+        elseif HOLDJUMPCANCEL[m.action] then
+            e.hObjJumps = 0
         elseif (m.action & ACT_FLAG_AIR) == 0 then
             e.hObjPressed = false
         end
 
-        if (m.action == ACT_HOLD_IDLE or m.action == ACT_HOLD_WALKING) or e.hObjJumps == 3 then
-            if e.hObjReset >= 8 then
+        if (m.action == ACT_HOLD_IDLE or m.action == ACT_HOLD_WALKING or m.action == ACT_HOLD_JUMP_LAND_STOP) or e.hObjJumps == 3 then
+            if e.hObjReset >= 20 then
                 e.hObjReset = e.hObjReset + 1
             else
                 e.hObjJumps = 0
