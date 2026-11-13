@@ -830,35 +830,22 @@ end
 function act_roll(m)--ODYSSEY ROLL
     common_slide_action_with_jump(m, ACT_WALKING, ACT_LONG_JUMP, ACT_FREEFALL, CHAR_ANIM_FORWARD_SPINNING)
 
+    local steepness = math.sqrt(m.floor.normal.x * m.floor.normal.x + m.floor.normal.z * m.floor.normal.z);
     local intendedDYaw = m.intendedYaw - m.slideYaw;
     local forward = coss(intendedDYaw);
     if (forward < 0.0 and m.forwardVel >= 0.0) then
         forward = forward * (0.5 + 0.5 * m.forwardVel / 100.0)
     end
     
-    local floor_type = mario_get_floor_class(m)
-
-    if floor_type == SURFACE_CLASS_VERY_SLIPPERY then
-        accel = 10.0;
-        lossFactor = m.intendedMag / 32.0 * forward * 0.02 + 0.99;
-    elseif floor_type == SURFACE_CLASS_SLIPPERY then
-        accel = 8.0;
-        lossFactor = m.intendedMag / 32.0 * forward * 0.02 + 0.98;
-    elseif floor_type == SURFACE_CLASS_NOT_SLIPPERY then
-        accel = 5.0;
-        lossFactor = m.intendedMag / 32.0 * forward * 0.02 + 0.96;
-    else
-        accel = 7.0;
-        lossFactor = m.intendedMag / 32.0 * forward * 0.02 + 0.96;
-    end
+    apply_slope_accel(m)
 
     if (m.input & INPUT_B_PRESSED) ~= 0 then
         set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
-        mario_set_forward_vel(m, math.max(math.min(120, m.forwardVel + 30), 30))
+        mario_set_forward_vel(m, math.max(math.min(120, m.forwardVel + 30/ (1 + steepness)), 30))
         play_sound(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject)
     end
 
-    mario_set_forward_vel(m, m.forwardVel + lossFactor / 2)
+    mario_set_forward_vel(m, math.min(m.forwardVel, 120))
 
     if (m.forwardVel < 10) then
         if (m.forwardVel < 0) and AIR_STEP_HIT_WALL then
