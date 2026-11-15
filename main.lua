@@ -32,11 +32,12 @@ ACT_WATER_DIVE = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING | ACT_FLAG_ATTACKING)
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING | ACT_FLAG_ATTACKING)
 ACT_WATER_POUND_JUMP = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
+ACT_GRABBED_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
--- gLevelValues.entryLevel = LEVEL_SA--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_PSS--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -63,7 +64,8 @@ local SPINACTIONS = {
     [ACT_WATER_JUMP] = true,
     [ACT_AIR_DASH_END] = true,
     [ACT_BUTT_SLIDE_AIR] = true,
-    [ACT_TOP_OF_POLE_JUMP] = true
+    [ACT_TOP_OF_POLE_JUMP] = true,
+    [ACT_GRABBED_JUMP] = true
 }
 
 local AIRDASHACTIONS = {
@@ -141,7 +143,8 @@ local HOLDJUMPCANCEL = {
 local convert_actions = {
     [ACT_AIR_HIT_WALL] = ACT_CUSTOM_AIR_HIT_WALL,
     [ACT_SLIDE_KICK] = ACT_ROLL,
-    [ACT_WATER_PUNCH] = ACT_WATER_SPIN
+    [ACT_WATER_PUNCH] = ACT_WATER_SPIN,
+    [ACT_WATER_JUMP] = ACT_JUMP
 }
 
 local gMarioStateExtras = {}
@@ -848,12 +851,13 @@ function act_roll(m)--ODYSSEY ROLL
     if (forward < 0.0 and m.forwardVel >= 0.0) then
         forward = forward * (0.5 + 0.5 * m.forwardVel / 100.0)
     end
+    local upHill = math.abs((m.floorAngle - m.slideYaw + 0x8000) % 0x10000 - 0x8000) > 0x4000
     
     apply_slope_accel(m)
 
     if (m.input & INPUT_B_PRESSED) ~= 0 then
         set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
-        mario_set_forward_vel(m, math.max(math.min(120, m.forwardVel + 30/ (1 + steepness)), 30))
+        mario_set_forward_vel(m, math.max(math.min(120, m.forwardVel + ((m.area.terrainType == TERRAIN_SLIDE and upHill) and 8 or 30)/ (1 + steepness)), 30))
         play_sound(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject)
     end
 
@@ -866,6 +870,7 @@ function act_roll(m)--ODYSSEY ROLL
             set_mario_action(m, ACT_START_CROUCHING, 0)
         end
     end
+
 end
 
 local function act_air_dash(m)--AIR DASH
@@ -1518,14 +1523,22 @@ function act_grabbed(m)--ESCAPE OUT OF AN GRAB
                 set_camera_shake_from_hit(SHAKE_SHOCK)
             else
                 play_sound_with_freq_scale(SOUND_GENERAL_RACE_GUN_SHOT, m.marioObj.header.gfx.cameraToObject, 2)
+                queue_rumble_data_mario(m, 5, 10)
                 e.grabEscape = 0
                 e.grabStruggle = false
                 e.lastAnaDir = 0
+                m.pos.x = m.heldByObj.oPosX + 215 * sins(m.heldByObj.oMoveAngleYaw) + 1 * coss(m.heldByObj.oMoveAngleYaw)
+                m.pos.z = m.heldByObj.oPosZ + 215 * coss(m.heldByObj.oMoveAngleYaw) - 1 * sins(m.heldByObj.oMoveAngleYaw)
+                m.pos.y = m.heldByObj.oPosY + 120
+                m.vel.y = 50
+                m.forwardVel = 8
                 m.heldByObj = nil
                 m.usedObj = nil
-                set_mario_action(m, ACT_FORWARD_AIR_KB, 0)
-                m.forwardVel = 0.5
-                m.vel.y = 23
+                m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
+                play_mario_sound(m, SOUND_ACTION_UNSTUCK_FROM_GROUND, CHAR_SOUND_HAHA)
+                set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR | PARTICLE_MIST_CIRCLE, 0)
+                set_mario_action(m, ACT_GRABBED_JUMP, 0)
+
                 return
             end
         end
@@ -1542,6 +1555,15 @@ function act_grabbed(m)--ESCAPE OUT OF AN GRAB
 
     e.animTimer = e.animTimer + 1
     m.actionTimer = m.actionTimer + 1
+end
+
+local function act_grabbed_jump(m)
+    stepResult = common_air_action_step(m, ACT_FORWARD_AIR_KB, CHAR_ANIM_SINGLE_JUMP, AIR_STEP_CHECK_LEDGE_GRAB | AIR_STEP_CHECK_HANG)
+
+    if stepResult == AIR_STEP_LANDED then
+        set_mario_action(m, ACT_JUMP_LAND, 0)
+        return
+    end
 end
 
 local function act_emote_sit(m)--EMOTE SIT
@@ -1737,10 +1759,14 @@ local function mario_on_set_action(m)
         set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
     elseif m.action == ACT_WATER_JUMP then
         set_mario_particle_flags(m, PARTICLE_SHALLOW_WATER_SPLASH, 0)
-    elseif m.action == ACT_WATER_IDLE  then
+    elseif m.action == ACT_WATER_IDLE then
         e.GPtWP = false
         e.driWater = false
         e.didSwimDive = false
+    elseif m.prevAction == ACT_WATER_SPIN then
+        m.marioBodyState.allowPartRotation = 0
+        m.marioBodyState.torsoAngle.x = 0
+        m.marioBodyState.torsoAngle.y = 0
     elseif m.action == ACT_LEDGE_GRAB then
         e.rotAngle = m.forwardVel
     elseif m.action ~= ACT_GRABBED then
@@ -1840,8 +1866,8 @@ local function mario_update(m)
         end
     end
 
-    --LONG JUMP & TOP OF THE POLE GROUND POUND
-    if (m.action == ACT_LONG_JUMP or m.action == ACT_TOP_OF_POLE_JUMP) and (m.input & INPUT_Z_PRESSED) ~= 0 then
+    --LONG JUMP & TOP OF THE POLE & GRABBED JUMP TRANSITION TO GROUND POUND
+    if (m.action == ACT_LONG_JUMP or m.action == ACT_TOP_OF_POLE_JUMP or m.action == ACT_GRABBED_JUMP) and (m.input & INPUT_Z_PRESSED) ~= 0 then
         set_mario_action(m, ACT_GROUND_POUND, 0)
     end
 
@@ -1849,6 +1875,7 @@ local function mario_update(m)
     if (m.action == ACT_GROUND_POUND_LAND or (e.fromGround and m.action == ACT_DRILL_DOWN)) and (m.input & INPUT_A_PRESSED) ~= 0 and m.floor.type ~= SURFACE_BURNING then
         if e.groundPoundCooldown <= 0 then
             set_mario_action(m, ACT_TRIPLE_JUMP, 0)
+            m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
             play_mario_sound(m, SOUND_GENERAL_BOING2, CHAR_SOUND_TWIRL_BOUNCE)
             m.faceAngle.y = m.intendedYaw
             m.vel.y = 70.0
@@ -2047,6 +2074,7 @@ hook_event(HOOK_BEFORE_SET_MARIO_ACTION, before_set_mario_action)
 
 hook_mario_action(ACT_GROUND_POUND, { every_frame = act_ground_pound }, INT_GROUND_POUND)
 hook_mario_action(ACT_GRABBED, { every_frame = act_grabbed })
+hook_mario_action(ACT_GRABBED_JUMP, { every_frame = act_grabbed_jump })
 hook_mario_action(ACT_FAKE_FREEFALL, { every_frame = act_fake_freefall })
 hook_mario_action(ACT_SPIN_JUMP, { every_frame = act_spin_jump }, INT_KICK)
 hook_mario_action(ACT_SPIN_JUMP_END, { every_frame = act_spin_jump_end })
