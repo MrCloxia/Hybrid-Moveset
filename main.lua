@@ -33,6 +33,7 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING | ACT_FLAG_ATTACKING)
 ACT_WATER_POUND_JUMP = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_GRABBED_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_HOLD_CROUCH = allocate_mario_action(ACT_GROUP_STATIONARY)
 ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
@@ -111,10 +112,6 @@ local WATERACTIONS = {
     [ACT_FLUTTER_KICK] = true,
     [ACT_WATER_PUNCH] = true,
     [ACT_WATER_SPIN] = true
-    --[ACT_HOLD_WATER_IDLE] = true,
-    --[ACT_HOLD_WATER_ACTION_END] = true,
-    --[ACT_HOLD_SWIMMING_END] = true,
-    --[ACT_HOLD_BREASTSTROKE] = true
 }
 
 local GROUNDACTIONS = {
@@ -145,7 +142,11 @@ local HOLDJUMPCANCEL = {
     [ACT_HOLD_FREEFALL_LAND] = true,
     [ACT_HOLD_BUTT_SLIDE] = true,
     [ACT_HOLD_BUTT_SLIDE_STOP] = true,
-    [ACT_HOLD_STOMACH_SLIDE] = true
+    [ACT_HOLD_STOMACH_SLIDE] = true,
+    [ACT_HOLD_WATER_IDLE] = true,
+    [ACT_HOLD_WATER_ACTION_END] = true,
+    [ACT_HOLD_SWIMMING_END] = true,
+    [ACT_HOLD_BREASTSTROKE] = true
 }
 
 local convert_actions = {
@@ -1358,8 +1359,10 @@ end
 local function act_air_hit_wall(m)
     local e = gMarioStateExtras[m.playerIndex]
 
-    if m.heldObj ~= 0 then
-        mario_drop_held_object(m)
+    if m.heldObj ~= nil then--Currently spams the sound of bonking for a few seconds, perhaps there's a better method to do this?
+        mario_bonk_reflection(m, false)
+        set_mario_action(m, ACT_HOLD_FREEFALL, 0)
+        return
     end
 
     m.actionTimer = m.actionTimer + 1
@@ -1569,6 +1572,105 @@ local function act_grabbed_jump(m)
         set_mario_action(m, ACT_JUMP_LAND, 0)
         return
     end
+end
+
+function check_hold_conditions(m)
+    if (m.input & INPUT_UNKNOWN_10) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_SHOCKWAVE_BOUNCE, 0)
+    end
+
+    if (m.input & INPUT_OFF_FLOOR) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_FREEFALL, 0)
+    end
+
+    if m.quicksandDepth > 30.0 then
+        return drop_and_set_mario_action(m, ACT_IN_QUICKSAND, 0)
+    end
+end
+
+function act_hold_idle(m)
+    if m.heldObj == nil then
+        return set_mario_action(m, ACT_IDLE, 0)
+    elseif m.actionTimer == 0 then
+        set_character_animation(m, CHAR_ANIM_IDLE_WITH_LIGHT_OBJ)
+    end
+    
+    if get_id_from_behavior(m.heldObj.behavior) == id_bhvJumpingBox then
+        return set_mario_action(m, ACT_CRAZY_BOX_BOUNCE, 0)
+    end
+
+    if (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
+        m.faceAngle.y = m.intendedYaw
+        return set_mario_action(m, ACT_HOLD_WALKING, 0)
+    end
+
+    if (m.input & INPUT_A_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_HOLD_JUMP, 0)
+    end
+
+    if (m.input & INPUT_Z_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_HOLD_CROUCH, 0)
+    elseif (m.input & INPUT_B_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_THROWING, 0)
+    end
+
+    check_hold_conditions(m)
+    stationary_ground_step(m)
+
+    m.actionTimer = m.actionTimer + 1
+end
+
+local function act_hold_crouch(m)
+    if m.actionTimer == 0 then
+        set_character_animation(m, CHAR_ANIM_START_CROUCHING)
+    end
+
+    if (m.input & INPUT_Z_DOWN) ~= 0 then
+        if (m.input & INPUT_B_PRESSED) ~= 0 then
+            set_mario_action(m, ACT_PLACING_DOWN, 0)
+        end
+    else
+        set_character_animation(m, CHAR_ANIM_STOP_CROUCHING)
+    end
+
+    if m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_START_CROUCHING and m.marioObj.header.gfx.animInfo.animFrame == 5 then
+        set_character_animation(m, CHAR_ANIM_CROUCHING)
+    elseif m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_STOP_CROUCHING and m.marioObj.header.gfx.animInfo.animFrame == 8 then
+        return set_mario_action(m, ACT_HOLD_IDLE, 0)
+    end
+
+    mario_is_crouching(m)
+    stationary_ground_step(m) 
+
+    m.actionTimer = m.actionTimer + 1
+end
+
+function act_throwing(m)
+    if m.actionTimer == 0 then
+        thrObj = m.heldObj
+    end
+    
+    if (m.input & INPUT_UNKNOWN_10) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_SHOCKWAVE_BOUNCE, 0)
+    end
+
+    if (m.input & INPUT_OFF_FLOOR) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_FREEFALL, 0)
+    end
+
+    if m.actionTimer == 7 then
+        if (m.heldObj.oInteractionSubtype & INT_SUBTYPE_HOLDABLE_NPC) ~= 0 then
+            thrObj.oPosY = thrObj.oPosY + 100--Can't get NPCs to be thrown since their oForwardVel gets reset.
+        end
+        mario_throw_held_object(m)
+        play_character_sound_if_no_flag(m, CHAR_SOUND_WAH2, MARIO_MARIO_SOUND_PLAYED)
+        play_sound_if_no_flag(m, SOUND_ACTION_THROW, MARIO_ACTION_SOUND_PLAYED)
+        queue_rumble_data_mario(m, 3, 50)
+    end
+
+    animated_stationary_ground_step(m, CHAR_ANIM_GROUND_THROW, ACT_IDLE)
+
+    m.actionTimer = m.actionTimer + 1
 end
 
 local function act_emote_sit(m)--EMOTE SIT
@@ -2090,12 +2192,18 @@ hook_mario_action(ACT_AIR_DASH, { every_frame = act_air_dash}, INT_SLIDE_KICK)
 hook_mario_action(ACT_AIR_DASH_END, { every_frame = act_air_dash_end})
 hook_mario_action(ACT_TWIRL_N_PLACE, { every_frame = act_twirl_n_place, gravity = act_twirl_n_place_gravity })
 hook_mario_action(ACT_DRILL_DOWN, { every_frame = act_drill_down}, INT_GROUND_POUND)
+
 hook_mario_action(ACT_DOLPHIN_DIVE, { every_frame = act_dolphin_dive}, INT_SLIDE_KICK)
 hook_mario_action(ACT_WATER_SPIN, { every_frame = act_water_spin}, INT_FAST_ATTACK_OR_SHELL)
 hook_mario_action(ACT_WATER_DIVE, { every_frame = act_water_dive})
 hook_mario_action(ACT_WATER_GROUND_POUND, { every_frame = act_water_ground_pound }, INT_GROUND_POUND)
 hook_mario_action(ACT_WATER_GROUND_POUND_LAND, { every_frame = act_water_ground_pound_land }, INT_GROUND_POUND)
 hook_mario_action(ACT_WATER_POUND_JUMP, { every_frame = act_water_pound_jump})
+
+hook_mario_action(ACT_HOLD_IDLE, { every_frame = act_hold_idle})
+hook_mario_action(ACT_HOLD_CROUCH, { every_frame = act_hold_crouch})
+hook_mario_action(ACT_THROWING, { every_frame = act_throwing})
 hook_mario_action(ACT_HOLD_DOUBLE_JUMP, { every_frame = act_hold_double_jump})
 hook_mario_action(ACT_HOLD_TRIPLE_JUMP, { every_frame = act_hold_triple_jump})
+
 hook_mario_action(ACT_EMOTE_SIT, { every_frame = act_emote_sit })
