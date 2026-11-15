@@ -37,7 +37,7 @@ ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR |
 ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
---gLevelValues.entryLevel = LEVEL_PSS--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_DDD--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -130,6 +130,14 @@ local GROUNDACTIONS = {
     [ACT_QUICKSAND_JUMP_LAND] = true,
     [ACT_TURNING_AROUND] = true,
     [ACT_FINISH_TURNING_AROUND] = true
+}
+
+local ALLOWPOUND = {
+    [ACT_LONG_JUMP] = true,
+    [ACT_TOP_OF_POLE_JUMP] = true,
+    [ACT_GRABBED_JUMP] = true,
+    [ACT_AIR_DASH] = true,
+    [ACT_AIR_DASH_END] = true
 }
 
 local HOLDJUMPCANCEL = {
@@ -684,11 +692,13 @@ end
 local function act_water_pound_jump(m)--WATER POUND JUMP
     local movement = perform_water_step(m)
 
+    if (m.input & INPUT_Z_PRESSED) ~= 0 then
+        set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
+        return
+    end
+
     if m.actionTimer == 0 then
         set_mario_animation(m, CHAR_ANIM_FORWARD_SPINNING)
-    elseif m.actionTimer == 23 then
-        --set_mario_animation(m, CHAR_ANIM_WATER_FORWARD_KB)
-        --set_anim_to_frame(m, 15)
     end
 
     local poSpe = math.min(m.actionTimer / 25, 1)
@@ -710,6 +720,8 @@ local function act_water_pound_jump(m)--WATER POUND JUMP
     elseif m.actionTimer >= 30 or movement == WATER_STEP_HIT_CEILING then
         if movement ~= WATER_STEP_HIT_CEILING then
             m.faceAngle.x = 0x4000
+        else
+            play_sound(SOUND_ACTION_BONK, m.marioObj.header.gfx.cameraToObject)
         end
         set_mario_action(m, ACT_WATER_IDLE, 0)
         return
@@ -790,6 +802,7 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
         if stepResult == AIR_STEP_HIT_WALL and not e.fromGround then
             stop_sounds_from_source(m.marioObj.header.gfx.cameraToObject)
             mario_bonk_reflection(m, false)
+            set_mario_animation(m, CHAR_ANIM_GENERAL_FALL)
             m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
             play_mario_sound(m, 0, CHAR_SOUND_UH)
         end
@@ -900,10 +913,6 @@ local function act_air_dash(m)--AIR DASH
         end
         m.actionTimer = m.actionTimer + 1
     end
-
-    if (m.input & INPUT_Z_PRESSED) ~= 0 then
-        set_mario_action(m, ACT_GROUND_POUND, 0)
-    end
 end
 
 local function act_air_dash_end(m)--AIR DASH END
@@ -930,10 +939,6 @@ local function act_air_dash_end(m)--AIR DASH END
 
     if stepResult == AIR_STEP_HIT_WALL and (m.input & INPUT_A_PRESSED) ~= 0 then
         set_mario_action(m, ACT_AIR_HIT_WALL, 0)
-    end
-
-    if (m.input & INPUT_Z_PRESSED) ~= 0 then
-        set_mario_action(m, ACT_GROUND_POUND, 0)
     end
 end
 
@@ -1866,8 +1871,8 @@ local function mario_update(m)
         end
     end
 
-    --LONG JUMP & TOP OF THE POLE & GRABBED JUMP TRANSITION TO GROUND POUND
-    if (m.action == ACT_LONG_JUMP or m.action == ACT_TOP_OF_POLE_JUMP or m.action == ACT_GRABBED_JUMP) and (m.input & INPUT_Z_PRESSED) ~= 0 then
+    --ACTIONS TRANSITION TO GROUND POUND
+    if ALLOWPOUND[m.action] and (m.input & INPUT_Z_PRESSED) ~= 0 then
         set_mario_action(m, ACT_GROUND_POUND, 0)
     end
 
