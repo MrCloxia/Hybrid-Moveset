@@ -38,7 +38,7 @@ ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR |
 ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
---gLevelValues.entryLevel = LEVEL_DDD--LEVEL START DEBUG
+gLevelValues.entryLevel = LEVEL_PSS--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -1673,6 +1673,55 @@ function act_throwing(m)
     m.actionTimer = m.actionTimer + 1
 end
 
+function act_dive_slide(m) --SUNSHINE DIVE SLIDE
+    common_slide_action(m, ACT_STOMACH_SLIDE_STOP, ACT_FREEFALL, CHAR_ANIM_DIVE);
+    
+    if not m.action == ACT_DIVE_SLIDE then
+        return
+    end
+
+    local flatSurface = math.abs(m.floorAngle) < 0x100
+    local steepness = math.sqrt(m.floor.normal.x * m.floor.normal.x + m.floor.normal.z * m.floor.normal.z);
+    local slopeCondition = ((m.floor.type == SURFACE_CLASS_VERY_SLIPPERY or m.area.terrainType == TERRAIN_SLIDE) and not flatSurface) or m.input & INPUT_ABOVE_SLIDE and steepness > 0.5
+
+    if (m.input & INPUT_A_PRESSED) ~= 0 then
+        if (slopeCondition and m.actionTimer > 10) then
+            set_mario_action(m, ACT_STEEP_JUMP, 0)
+        elseif not slopeCondition then
+            queue_rumble_data_mario(m, 5, 80)
+            set_mario_action(m,(m.forwardVel > 0.0) and ACT_FORWARD_ROLLOUT or ACT_BACKWARD_ROLLOUT, 0)
+        end
+
+        return
+    end
+
+    if not slopeCondition and (m.input & INPUT_B_PRESSED) ~= 0 then
+        m.vel.y = 20
+        local storeVel = m.forwardVel
+        set_mario_action(m, ACT_DIVE, 1)
+        mario_set_forward_vel(m, math.min(50,storeVel + 20 / (1 + steepness*2)))
+
+        return
+    end
+
+    play_mario_landing_sound_once(m, SOUND_ACTION_TERRAIN_BODY_HIT_GROUND)
+
+    if (update_sliding(m, 1) and m.forwardVel <= 4.0) then
+        mario_set_forward_vel(m, 0.0)
+        set_mario_action(m, ACT_STOMACH_SLIDE_STOP, 0)
+    end
+
+    if (mario_check_object_grab(m)) then
+        mario_grab_used_object(m)
+        if (m.heldObj ~= nil) then
+            m.marioBodyState.grabPos = GRAB_POS_LIGHT_OBJ
+        end
+        return
+    end
+
+    m.actionTimer = m.actionTimer + 1
+end
+
 local function act_emote_sit(m)--EMOTE SIT
     local e = gMarioStateExtras[m.playerIndex]
     local s = gPlayerSyncTable[m.playerIndex]
@@ -2082,6 +2131,23 @@ local function mario_update(m)
         e.twirlAmount = 0
     end
 
+    if m.action == ACT_STOMACH_SLIDE then
+        if (m.input & INPUT_A_PRESSED) ~= 0 then
+            queue_rumble_data_mario(m, 5, 80)
+
+            local flatSurface = math.abs(m.floorAngle) < 0x100
+            local steepness = math.sqrt(m.floor.normal.x * m.floor.normal.x + m.floor.normal.z * m.floor.normal.z)
+            local slopeCondition = ((m.floor.type == SURFACE_CLASS_VERY_SLIPPERY or m.area.terrainType == TERRAIN_SLIDE) and not flatSurface) or m.input & INPUT_ABOVE_SLIDE and steepness > 0.5
+
+            if (slopeCondition and m.actionTimer > 10) then
+                set_mario_action(m, ACT_STEEP_JUMP, 0)
+            elseif not slopeCondition then
+                set_mario_action(m,(m.forwardVel > 0.0) and ACT_FORWARD_ROLLOUT or ACT_BACKWARD_ROLLOUT, 0)
+            end
+        end
+        m.actionTimer = m.actionTimer + 1
+    end
+
     --DRILLING for Vanilla Twirling
     if m.action == ACT_TWIRLING and (m.input & INPUT_Z_DOWN) ~= 0 then
         set_mario_action(m, ACT_DRILL_DOWN, 0)
@@ -2205,5 +2271,6 @@ hook_mario_action(ACT_HOLD_CROUCH, { every_frame = act_hold_crouch})
 hook_mario_action(ACT_THROWING, { every_frame = act_throwing})
 hook_mario_action(ACT_HOLD_DOUBLE_JUMP, { every_frame = act_hold_double_jump})
 hook_mario_action(ACT_HOLD_TRIPLE_JUMP, { every_frame = act_hold_triple_jump})
+hook_mario_action(ACT_DIVE_SLIDE, { every_frame = act_dive_slide})
 
 hook_mario_action(ACT_EMOTE_SIT, { every_frame = act_emote_sit })
