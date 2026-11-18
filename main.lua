@@ -38,7 +38,7 @@ ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR |
 ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
---gLevelValues.entryLevel = LEVEL_PSS--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_WDW--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -1464,6 +1464,14 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
     local steepness = math.sqrt(m.floor.normal.x * m.floor.normal.x + m.floor.normal.z * m.floor.normal.z)
     local upHill = math.abs((m.floorAngle - m.slideYaw + 0x8000) % 0x10000 - 0x8000) > 0x4000
 
+    if m.forwardVel <= 13 and m.wall ~= nil then--bonk
+        mario_set_forward_vel(m, -10)
+        set_mario_particle_flags(m, PARTICLE_VERTICAL_STAR, 0)
+        play_sound(SOUND_ACTION_BONK, m.marioObj.header.gfx.cameraToObject)
+        set_mario_action(m, ACT_BACKWARD_GROUND_KB, 0)
+        return
+    end
+
     if (m.input & (INPUT_A_PRESSED)) ~= 0 or not s.usingHybird and (m.input & (INPUT_B_PRESSED)) ~= 0 then
         queue_rumble_data_mario(m, 5, 80)
         set_mario_action(m, (m.forwardVel > 0.0) and ACT_FORWARD_ROLLOUT or ACT_BACKWARD_ROLLOUT, 0)
@@ -1482,17 +1490,15 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
 
     play_mario_landing_sound_once(m, SOUND_ACTION_TERRAIN_BODY_HIT_GROUND)
 
-    if (update_sliding(m, 1) and m.forwardVel <= 4.0) then
+    if (m.pos.y <= m.waterLevel) and m.forwardVel >= 0 and s.usingHybird then--Sliding on water
+        local yawDiff = ((m.intendedYaw - m.faceAngle.y + 0x8000) & 0xFFFF) - 0x8000
+        m.forwardVel = math.min(m.forwardVel + (math.abs(yawDiff) > 0x4000 and -1 or 0.5), 80)
+        m.faceAngle.y = m.faceAngle.y + math.max(-0x350, math.min(yawDiff / 3, 0x350))
+
+        mario_set_forward_vel(m, m.forwardVel)
+    elseif (update_sliding(m, 1) and m.forwardVel <= 4.0) then
         mario_set_forward_vel(m, 0.0)
         set_mario_action(m, ACT_STOMACH_SLIDE_STOP, 0)
-    end
-
-    if (mario_check_object_grab(m)) then
-        mario_grab_used_object(m)
-        if (m.heldObj ~= nil) then
-            m.marioBodyState.grabPos = GRAB_POS_LIGHT_OBJ
-        end
-        return
     end
 
     m.actionTimer = m.actionTimer + 1
