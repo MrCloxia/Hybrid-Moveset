@@ -165,6 +165,11 @@ for i = 0, (MAX_PLAYERS - 1) do
     s = gPlayerSyncTable[i]
 
     s.usingHybird = true
+    s.allowfaDa = false
+    s.allowAiDa = true
+    s.dashPresses = 1
+    s.allowWhirl = true
+    s.whirlStrength = 10
 
     e.hObjJumps = 0
     e.hObjPressed = false
@@ -266,6 +271,26 @@ local hybird_cmd = function(_, value)
     gPlayerSyncTable[0].usingHybird = value
 end
 
+local allowFall_cmd = function(_, value)
+    gPlayerSyncTable[0].allowfaDa = value
+end
+
+local allowAirDash_cmd = function (ind, value)
+    gPlayerSyncTable[0].allowAiDa = value
+end
+
+local aida_Presses_cmd = function (ind, value)
+    gPlayerSyncTable[0].dashPresses = value
+end
+
+local allowWhirl_cmd = function (ind, value)
+    gPlayerSyncTable[0].allowWhirl = value
+end
+
+local whirl_Strength_cmd = function (ind, value)
+    gPlayerSyncTable[0].whirlStrength = value
+end
+
 local function random_float(min, max)
     return min + math.random() * (max - min)
 end
@@ -294,7 +319,7 @@ function no_fall_damage(m)
     if not m or m.playerIndex == nil then 
         return 
     end
-    if not s.usingHybird then 
+    if not s.usingHybird or s.allowfaDa then 
         return 
     end
     m.peakHeight = m.pos.y
@@ -965,6 +990,7 @@ end
 local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE / WHIRLWIND
     local e = gMarioStateExtras[m.playerIndex]
     e.airTime = e.airTime + 1
+    m.peakHeight = m.pos.y--No scream
 
     -- m.faceAngle.y = m.intendedYaw - approach_s32(m.intendedYaw - m.faceAngle.y, 0, 0x300, 0x300);
 
@@ -2092,14 +2118,14 @@ local function mario_update(m)
     end
 
     --AIR DASH
-    if AIRDASHACTIONS[m.action] and not e.didAirDash and (m.input & INPUT_A_PRESSED) ~= 0 then
+    if AIRDASHACTIONS[m.action] and not e.didAirDash and (m.input & INPUT_A_PRESSED) ~= 0 and s.allowAiDa then
         -- if m.forwardVel < 35 and m.vel.y <= 10 then --Air kick function when too slow to do the dash.
         --     m.faceAngle.y = m.intendedYaw
         --     mario_set_forward_vel(m, m.forwardVel * 1.35)
         --     set_mario_action(m, ACT_JUMP_KICK, 0)
         -- end
 
-        if e.dashPress < 1 then
+        if e.dashPress < s.dashPresses then
             if m.action & ACT_FLAG_AIR ~= 0 then
                 e.dashPress = e.dashPress + 1
             end
@@ -2114,7 +2140,7 @@ local function mario_update(m)
     end
 
     --SUNSHINE SPIN / TWIRL N PLACE / WHIRLWIND
-    if SHINESPINACTIONS[m.action] and math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 and m.quicksandDepth < 30.0 then
+    if SHINESPINACTIONS[m.action] and math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 and m.quicksandDepth < 30.0 and s.allowWhirl then
         local flatSurface = math.abs(m.floorAngle) < 0x1000
         if ((m.floorHeight == m.pos.y) and (m.floor.type == SURFACE_CLASS_VERY_SLIPPERY or m.area.terrainType == TERRAIN_SLIDE) and not flatSurface) then
             return
@@ -2133,7 +2159,7 @@ local function mario_update(m)
             e.analogStick = e.analogStick + 0x10000
         end
         e.twirlYaw = stickYaw
-        e.twirlAmount = e.twirlAmount + e.analogStick * ((m.floorHeight == m.pos.y) and 1.25 or 1)
+        e.twirlAmount = e.twirlAmount + e.analogStick * ((m.floorHeight == m.pos.y) and (s.whirlStrength / 10 + 0.25) or (s.whirlStrength / 10))
         e.twirlTimer = e.twirlTimer + 1
 
         if math.abs(e.twirlAmount) >= 0x10000 then
@@ -2249,7 +2275,15 @@ end)
 -- Hooks --
 ---------------
 
-hook_mod_menu_checkbox("Use moveset", gPlayerSyncTable[0].usingHybird, hybird_cmd)
+--hook_mod_menu_text("\\#ffdd00\\==-[\\#de1212\\ General \\#3c99d6\\Settings \\#ffa600\\]-==")
+hook_mod_menu_checkbox("Enable Moveset:", gPlayerSyncTable[0].usingHybird, hybird_cmd)
+hook_mod_menu_checkbox("Enable Fall Damage:", gPlayerSyncTable[0].allowfaDa, allowFall_cmd)
+hook_mod_menu_text("\\#ffdd00\\==-[\\#9cf5ff\\ Air Dash \\#ffa600\\]-==")
+hook_mod_menu_checkbox("Enable Air Dash:", gPlayerSyncTable[0].allowAiDa, allowAirDash_cmd)
+hook_mod_menu_slider("Presses to activate:", 1, 1, 3, aida_Presses_cmd)
+hook_mod_menu_text("\\#ffdd00\\==-[\\#ffd69c\\ Whirlwind \\#ffa600\\]-==")
+hook_mod_menu_checkbox("Enable Whirlwind:", gPlayerSyncTable[0].allowWhirl, allowWhirl_cmd)
+hook_mod_menu_slider("Analog strength to activate:", 10, 5, 15, whirl_Strength_cmd)
 hook_chat_command("inputs", "- Moveset Info", inputs_command)
 
 hook_event(HOOK_BEFORE_MARIO_UPDATE, before_mario_update)
