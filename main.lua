@@ -770,7 +770,7 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
     update_air_without_turn(m);
 
     if m.actionTimer == 0 then
-        set_mario_animation(m, CHAR_ANIM_A_POSE)--Needs to be different cause for an example, doing Star Spin then an Sunshine Spin, it'll not actually change the animation to the custom one due to it before being the same animation. 
+        set_mario_animation(m, CHAR_ANIM_A_POSE)--Needs to be different cause for an example, doing Star Spin then an Whirlwind, it'll not actually change the animation to the custom one due to it before being the same animation. 
         smlua_anim_util_set_animation(m.marioObj, (e.fromGround and "star_spin_ground" or "star_spin"))
     end
 
@@ -962,7 +962,7 @@ local function act_twirl_n_place_gravity(m)
     m.vel.y = math.max(m.vel.y, (e.airTime >= 80 and -45 or -23))
 end
 
-local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE
+local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE / WHIRLWIND
     local e = gMarioStateExtras[m.playerIndex]
     e.airTime = e.airTime + 1
 
@@ -1455,7 +1455,7 @@ function act_ground_pound(m)
     end
 end
 
-function act_dive_slide(m)--SUNSHINE DIVE SLIDE
+function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
     common_slide_action(m, ACT_STOMACH_SLIDE_STOP, ACT_FREEFALL, CHAR_ANIM_DIVE);
     local e = gMarioStateExtras[m.playerIndex]
     local s = gPlayerSyncTable[m.playerIndex]
@@ -2107,7 +2107,7 @@ local function mario_update(m)
         end
     end
 
-    --SUNSHINE SPIN / TWIRL N PLACE
+    --SUNSHINE SPIN / TWIRL N PLACE / WHIRLWIND
     if SHINESPINACTIONS[m.action] and math.sqrt(m.controller.stickX * m.controller.stickX + m.controller.stickY * m.controller.stickY) > 20 and m.quicksandDepth < 30.0 then
         local flatSurface = math.abs(m.floorAngle) < 0x1000
         if ((m.floorHeight == m.pos.y) and (m.floor.type == SURFACE_CLASS_VERY_SLIPPERY or m.area.terrainType == TERRAIN_SLIDE) and not flatSurface) then
@@ -2212,7 +2212,7 @@ local function inputs_command(msg)
 \#ffbb80\(X)\#ffffff\ - Star Spin | \#ff7a7a\(A)\#d1e3ff\ in mid-air\#ffffff\ - Air Dash
 \#c0abff\(Z)\#ffdd00\ + \#7591ff\(B)\#ffffff\ - Roll | \#c0abff\(Z)\#ffdd00\ + \#7591ff\(B)\#d1e3ff\ in mid-air\#ffffff\ - Air Dive
 \#c0abff\(Z)\#ffdd00\ + \#ff7a7a\(A)\#ffffff\ - Ground Pound Jump
-\#83e6cb\(Joystick)\#ffffff\ - Sunshine Spin
+\#83e6cb\(Joystick)\#ffffff\ - Whirlwind | \#7591ff\(B)\#d1e3ff\ during a dive\#ffffff\ - Body Slam
 
 \#b5edff\Water Moveset:
 \#7591ff\(B)\#ffffff\ - Star Swim | \#7591ff\(B)\#d1e3ff\ on water surface\#ffffff\ - Dolphin Dive
