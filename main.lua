@@ -2282,6 +2282,21 @@ local function mario_update(m)
     end
 end
 
+-- HUD Render
+local airMeter = get_texture_info("air_meter")
+local airMeterpos = { x = 0, y = 0, z = 0 }
+
+local function hud_render()
+    local m = gMarioStates[0]
+
+    local prevPos = { x = airMeterpos.x, y = airMeterpos.y, z = airMeterpos.z}
+    djui_hud_world_pos_to_screen_pos(m.marioObj.header.gfx.pos, airMeterpos)
+
+    djui_hud_set_font(2)
+    djui_hud_print_text_interpolated("AIR",prevPos.x+65,prevPos.y-240,2,2,airMeterpos.x+65,airMeterpos.y-240,2,2)
+    djui_hud_render_texture_interpolated(airMeter,prevPos.x+70,prevPos.y-200,2,2,airMeterpos.x+70,airMeterpos.y-200,2,2)
+end
+
 ------------------------------------------------------
 -- -------------- Commands ----------------------
 ------------------------------------------------------
@@ -2341,6 +2356,7 @@ hook_event(HOOK_MARIO_UPDATE, mario_update)
 hook_event(HOOK_MARIO_UPDATE, no_fall_damage)
 hook_event(HOOK_ON_SET_MARIO_ACTION, mario_on_set_action)
 hook_event(HOOK_BEFORE_SET_MARIO_ACTION, before_set_mario_action)
+-- hook_event(HOOK_ON_HUD_RENDER, hud_render)
 
 --REPLACED ACTIONS
 
