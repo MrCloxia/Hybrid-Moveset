@@ -38,7 +38,7 @@ ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR |
 ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
---gLevelValues.entryLevel = LEVEL_WDW--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_JRB--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -110,7 +110,6 @@ local WATERACTIONS = {
     [ACT_WATER_ACTION_END] = true,
     [ACT_SWIMMING_END] = true,
     [ACT_FLUTTER_KICK] = true,
-    [ACT_WATER_PUNCH] = true,
     [ACT_WATER_SPIN] = true
 }
 
@@ -152,7 +151,6 @@ local HOLDJUMPCANCEL = {
 local convert_actions = {
     [ACT_AIR_HIT_WALL] = ACT_CUSTOM_AIR_HIT_WALL,
     [ACT_SLIDE_KICK] = ACT_ROLL,
-    [ACT_WATER_PUNCH] = ACT_WATER_SPIN,
     [ACT_WATER_JUMP] = ACT_JUMP
 }
 
@@ -167,6 +165,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     s.usingHybird = true
     s.allowfaDa = false
     s.allowAiDa = true
+    s.swapWaterSet = false
     s.dashPresses = 1
     s.allowWhirl = true
     s.whirlStrength = 10
@@ -274,8 +273,12 @@ local hybird_cmd = function(_, value)
     gPlayerSyncTable[0].usingHybird = value
 end
 
-local allowFall_cmd = function(_, value)
+local allowFall_cmd = function(_, value) 
     gPlayerSyncTable[0].allowfaDa = value
+end
+
+local swapWabind_cmd = function(_, value)
+    gPlayerSyncTable[0].swapWaterSet = value
 end
 
 local allowAirDash_cmd = function (ind, value)
@@ -422,6 +425,7 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
     end
     
     local e = gMarioStateExtras[m.playerIndex]
+    local s = gPlayerSyncTable[m.playerIndex]
     local movement = perform_water_step(m)
 
     m.marioBodyState.handState = MARIO_HAND_OPEN
@@ -440,7 +444,7 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
     play_sound_with_freq_scale(SOUND_ENV_WATER, m.marioObj.header.gfx.cameraToObject, 1.35)
     
     e.spinBufferTimer = e.spinBufferTimer - 1
-    if (m.input & INPUT_B_PRESSED) ~= 0 then
+    if not s.swapWaterSet and (m.input & INPUT_B_PRESSED) ~= 0 or m.controller.buttonPressed & X_BUTTON ~= 0 then
         e.spinBufferTimer = 5
     end
 
@@ -1315,6 +1319,7 @@ end
 
 local function act_water_ground_pound_land(m)--WATER GROUND POUND LAND
     local e = gMarioStateExtras[m.playerIndex]
+    local s = gPlayerSyncTable[m.playerIndex]
     local waterResult = perform_water_step(m)
 
     if m.actionTimer == 0 and waterResult == WATER_STEP_HIT_FLOOR then
@@ -1338,8 +1343,8 @@ local function act_water_ground_pound_land(m)--WATER GROUND POUND LAND
         e.spinSpeed = e.spinSpeed * 0.78
         m.marioBodyState.handState = MARIO_HAND_OPEN
 
-        if (m.input & INPUT_B_PRESSED) ~= 0 then
-            set_mario_action(m, ACT_WATER_PUNCH, 0)
+        if (not s.swapWaterSet and (m.input & INPUT_B_PRESSED) ~= 0 or m.controller.buttonPressed & X_BUTTON ~= 0) then
+            set_mario_action(m, ACT_WATER_SPIN, 0)
             return
         end
         if m.actionTimer >= 19 then
@@ -2235,6 +2240,20 @@ local function mario_update(m)
     if WATERACTIONS[m.action] then
         if (m.input & INPUT_Z_PRESSED) ~= 0 and (m.pos.y - m.floorHeight) > 40 then--WATER GROUND POUND
             set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
+            return
+        end
+
+        local spInput = s.swapWaterSet and (m.controller.buttonPressed & X_BUTTON) ~= 0 or not s.swapWaterSet and (m.input & INPUT_B_PRESSED) ~= 0
+        local puInput = s.swapWaterSet and (m.input & INPUT_B_PRESSED) ~= 0 or not s.swapWaterSet and (m.controller.buttonPressed & X_BUTTON) ~= 0
+
+        if spInput and m.action ~= ACT_WATER_SPIN then
+            set_mario_action(m, ACT_WATER_SPIN, 0)
+            return
+        end
+
+        if puInput and m.action ~= ACT_WATER_PUNCH then
+            set_mario_action(m, ACT_WATER_PUNCH, 0)
+            return
         end
     end
 
@@ -2305,9 +2324,10 @@ end)
 -- Hooks --
 ---------------
 
---hook_mod_menu_text("\\#ffdd00\\==-[\\#de1212\\ General \\#3c99d6\\Settings \\#ffa600\\]-==")
+hook_mod_menu_text("\\#ffdd00\\==-[\\#de1212\\ General \\#3c99d6\\Settings \\#ffa600\\]-==")
 hook_mod_menu_checkbox("Enable Moveset:", gPlayerSyncTable[0].usingHybird, hybird_cmd)
 hook_mod_menu_checkbox("Enable Fall Damage:", gPlayerSyncTable[0].allowfaDa, allowFall_cmd)
+hook_mod_menu_checkbox("Swap Water Punch & Spin:", gPlayerSyncTable[0].swapWaterSet, swapWabind_cmd)
 hook_mod_menu_text("\\#ffdd00\\==-[\\#9cf5ff\\ Air Dash \\#ffa600\\]-==")
 hook_mod_menu_checkbox("Enable Air Dash:", gPlayerSyncTable[0].allowAiDa, allowAirDash_cmd)
 hook_mod_menu_slider("Presses to activate:", 1, 1, 3, aida_Presses_cmd)
