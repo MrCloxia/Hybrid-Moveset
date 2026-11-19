@@ -250,6 +250,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.ssCooldown = 0
     e.ssWaterSpeed = 0
     e.isWaterSliding = false
+    e.oxygenAmount = 0x880
 
     e.syncedHeadAngle = {}
     e.syncedHeadAngle.x = 0
@@ -2257,6 +2258,28 @@ local function mario_update(m)
         end
     end
 
+    if (m.health >= 0x100) then
+        local terrainIsSnow = (m.area.terrainType & TERRAIN_MASK) == TERRAIN_SNOW
+        if ((m.pos.y >= (m.waterLevel - 140)) and not terrainIsSnow) then
+            e.oxygenAmount = e.oxygenAmount + 0x1A;
+            if m.pos.y <= m.waterLevel and WATERACTIONS[m.action] then
+                m.health = m.health - 0x1A
+            end
+        else
+            -- if not (m.action & ACT_FLAG_INTANGIBLE) then
+                m.health = m.health + (terrainIsSnow and 3 or 1)
+            -- end
+            e.oxygenAmount = e.oxygenAmount - (terrainIsSnow and 5 or 2)
+        end
+
+        if e.oxygenAmount > 0x880 then
+            e.oxygenAmount = 0x880
+        elseif e.oxygenAmount <= 0x100 then
+            m.health = m.health - 0x1A
+            e.oxygenAmount = 0x100
+        end
+    end
+
     --EMOTE SIT
     if (m.action == ACT_CROUCHING) and (m.controller.buttonPressed & X_BUTTON) ~= 0 and m.quicksandDepth < 30.0 then
         m.marioBodyState.allowPartRotation = 1
@@ -2282,19 +2305,50 @@ local function mario_update(m)
     end
 end
 
+local function lerp(a, b, t)
+	return (t == 1) and b or a + (b - a) * t
+end
+
 -- HUD Render
 local airMeter = get_texture_info("air_meter")
+local airRing = get_texture_info("air_ring")
+local airRings = {
+    get_texture_info("air_ring_0"),
+    get_texture_info("air_ring_1"),
+    get_texture_info("air_ring_2"),
+    get_texture_info("air_ring_3"),
+    get_texture_info("air_ring_4"),
+    get_texture_info("air_ring_5"),
+    get_texture_info("air_ring_6"),
+    get_texture_info("air_ring_7"),
+    get_texture_info("air_ring_8")
+}
 local airMeterpos = { x = 0, y = 0, z = 0 }
+local airSize = 0.0
 
 local function hud_render()
     local m = gMarioStates[0]
+    local e = gMarioStateExtras[m.playerIndex]
 
     local prevPos = { x = airMeterpos.x, y = airMeterpos.y, z = airMeterpos.z}
-    djui_hud_world_pos_to_screen_pos(m.marioObj.header.gfx.pos, airMeterpos)
+    local prevSize = airSize
+    local targetPos = { x = 0, y = 0, z = 0}
+    djui_hud_world_pos_to_screen_pos(m.marioObj.header.gfx.pos, targetPos)
 
-    djui_hud_set_font(2)
-    djui_hud_print_text_interpolated("AIR",prevPos.x+65,prevPos.y-240,2,2,airMeterpos.x+65,airMeterpos.y-240,2,2)
-    djui_hud_render_texture_interpolated(airMeter,prevPos.x+70,prevPos.y-200,2,2,airMeterpos.x+70,airMeterpos.y-200,2,2)
+    airMeterpos = {x = lerp(airMeterpos.x, targetPos.x, 0.5), y = lerp(airMeterpos.y, targetPos.y, 0.5), z = lerp(airMeterpos.z, targetPos.z, 0.5)}
+
+    airSize = lerp(airSize, (e.oxygenAmount < 0x880) and 2 or 0, 0.3)
+    if airSize > 0.1 then
+        djui_hud_set_font(2)
+        djui_hud_print_text_interpolated("AIR",prevPos.x+65 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize - 20*prevSize, prevSize,prevSize, airMeterpos.x+65 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize - 20*airSize, airSize,airSize)
+        djui_hud_render_texture_interpolated(airMeter, prevPos.x+70 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize, prevSize,prevSize, airMeterpos.x+70 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize, airSize,airSize)
+        
+        -- djui_hud_set_scissor(airMeterpos.x+70 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize,airMeter.width*airSize*(e.oxygenAmount/0x880),airMeter.height * airSize)
+        -- djui_hud_set_scissor(0.5,20,100,100)
+        djui_hud_set_color(52, 149, 235,255)
+        djui_hud_render_texture_interpolated(airRings[(e.oxygenAmount >> 8) + 1], prevPos.x+70 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize, prevSize,prevSize, airMeterpos.x+70 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize, airSize,airSize)
+        -- djui_hud_render_rect(0,0,1920,1080)
+    end
 end
 
 ------------------------------------------------------
@@ -2356,7 +2410,7 @@ hook_event(HOOK_MARIO_UPDATE, mario_update)
 hook_event(HOOK_MARIO_UPDATE, no_fall_damage)
 hook_event(HOOK_ON_SET_MARIO_ACTION, mario_on_set_action)
 hook_event(HOOK_BEFORE_SET_MARIO_ACTION, before_set_mario_action)
--- hook_event(HOOK_ON_HUD_RENDER, hud_render)
+hook_event(HOOK_ON_HUD_RENDER, hud_render)
 
 --REPLACED ACTIONS
 
