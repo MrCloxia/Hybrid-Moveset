@@ -240,6 +240,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.driWater = false
 
     e.didSwimDive = false
+    e.ADtWD = false
 
     e.grabEscape = 0
     e.nexAnim = 1
@@ -248,6 +249,8 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.lastAnaDir = 0
 
     e.ssCooldown = 0
+    e.ssWaterSpeed = 0
+    e.isWaterSliding = false
 
     e.syncedHeadAngle = {}
     e.syncedHeadAngle.x = 0
@@ -606,11 +609,15 @@ local function act_water_dive(m)--WATER DIVE
     if m.actionTimer == 0 then
         mario_set_forward_vel(m, 50)
         set_mario_animation(m, CHAR_ANIM_FLUTTERKICK)
-        play_sound(SOUND_GENERAL_SWISH_WATER, m.marioObj.header.gfx.cameraToObject)
-        play_sound_with_freq_scale(SOUND_GENERAL_MOVING_WATER, m.marioObj.header.gfx.cameraToObject, random_float(4.5, 5.37))
+        if not e.ADtWD then
+            play_sound(SOUND_GENERAL_SWISH_WATER, m.marioObj.header.gfx.cameraToObject)
+            play_sound_with_freq_scale(SOUND_GENERAL_MOVING_WATER, m.marioObj.header.gfx.cameraToObject, random_float(4.5, 5.37))
+        end
+    elseif m.actionTimer == 10 then
+        e.ADtWD = false
     end
 
-    if m.actionTimer % 12 == 0 then
+    if m.actionTimer % 12 == 0 and not e.ADtWD then
         play_sound(SOUND_ACTION_UNKNOWN434, m.marioObj.header.gfx.cameraToObject) 
     end
 
@@ -1491,6 +1498,8 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
     local upHill = math.abs((m.floorAngle - m.slideYaw + 0x8000) % 0x10000 - 0x8000) > 0x4000
 
     if m.forwardVel <= 13 and m.wall ~= nil then--bonk
+        e.ssWaterSpeed = 0
+        e.isWaterSliding = false
         mario_set_forward_vel(m, -10)
         set_mario_particle_flags(m, PARTICLE_VERTICAL_STAR, 0)
         play_sound(SOUND_ACTION_BONK, m.marioObj.header.gfx.cameraToObject)
@@ -1499,6 +1508,8 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
     end
 
     if (m.input & (INPUT_A_PRESSED)) ~= 0 or not s.usingHybird and (m.input & (INPUT_B_PRESSED)) ~= 0 then
+        e.ssWaterSpeed = 0
+        e.isWaterSliding = false
         queue_rumble_data_mario(m, 5, 80)
         set_mario_action(m, (m.forwardVel > 0.0) and ACT_FORWARD_ROLLOUT or ACT_BACKWARD_ROLLOUT, 0)
         return
@@ -1510,19 +1521,34 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
             e.ssCooldown = 30
         end
         set_mario_action(m, ACT_DIVE, 1)
-        mario_set_forward_vel(m, math.min(50, storeVel + diveSpeed / (1 + steepness * 2)))
+        play_sound_with_freq_scale(SOUND_ACTION_THROW, m.marioObj.header.gfx.cameraToObject, random_float(0.93, 1.5))
+        mario_set_forward_vel(m, math.min((e.isWaterSliding and e.ssWaterSpeed or 50), storeVel + diveSpeed / (1 + steepness * 2)))
+        if e.isWaterSliding and storeVel >= 64 then
+            m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
+            play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
+            set_mario_particle_flags(m, PARTICLE_BREATH, 0)
+        end
         return
     end
 
     play_mario_landing_sound_once(m, SOUND_ACTION_TERRAIN_BODY_HIT_GROUND)
 
+    if (m.floor.type ~= SURFACE_WATER or m.floor.type ~= SURFACE_FLOWING_WATER) then
+        e.ssWaterSpeed = 0
+        e.isWaterSliding = false
+    end
+
     if (m.pos.y <= m.waterLevel) and m.forwardVel >= 0 and s.usingHybird then--Sliding on water
         local yawDiff = ((m.intendedYaw - m.faceAngle.y + 0x8000) & 0xFFFF) - 0x8000
         m.forwardVel = math.min(m.forwardVel + (math.abs(yawDiff) > 0x4000 and -1 or 0.5), 80)
+        e.ssWaterSpeed = m.forwardVel
+        e.isWaterSliding = true
         m.faceAngle.y = m.faceAngle.y + math.max(-0x350, math.min(yawDiff / 3, 0x350))
 
         mario_set_forward_vel(m, m.forwardVel)
     elseif (update_sliding(m, 1) and m.forwardVel <= 4.0) then
+        e.ssWaterSpeed = 0
+        e.isWaterSliding = false
         mario_set_forward_vel(m, 0.0)
         set_mario_action(m, ACT_STOMACH_SLIDE_STOP, 0)
     end
@@ -1952,12 +1978,16 @@ local function mario_on_set_action(m)
             e.driWater = true
         end
         set_mario_action(m, ACT_WATER_GROUND_POUND, 0)
+    elseif (m.prevAction == ACT_DIVE or m.prevAction == ACT_DOLPHIN_DIVE) and (m.action & ACT_FLAG_SWIMMING) ~= 0 and (m.controller.buttonDown & B_BUTTON) ~= 0 then
+        e.ADtWD = true
+        set_mario_action(m, ACT_WATER_DIVE, 0)
     elseif m.action == ACT_WATER_JUMP then
         set_mario_particle_flags(m, PARTICLE_SHALLOW_WATER_SPLASH, 0)
     elseif m.action == ACT_WATER_IDLE then
         e.GPtWP = false
         e.driWater = false
         e.didSwimDive = false
+        e.ADtWD = false
     elseif m.prevAction == ACT_WATER_SPIN then
         m.marioBodyState.allowPartRotation = 0
         m.marioBodyState.torsoAngle.x = 0
@@ -2223,7 +2253,7 @@ local function mario_update(m)
         --m.health = 0x200
         --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
         --spawn_sync_object(id_bhvChuckya, E_MODEL_CHUCKYA, m.pos.x, m.pos.y, m.pos.z - 500, nil)
-        --set_water_level(0, 10000, true)
+        --set_water_level(0, m.pos.y + 12, true)
     end
 
     if m.pos then
