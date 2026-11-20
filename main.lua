@@ -178,6 +178,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     s.dashPresses = 1
     s.allowWhirl = true
     s.whirlStrength = 10
+    s.allowOxygen = true
 
     e.hObjJumps = 0
     e.hObjPressed = false
@@ -308,6 +309,10 @@ end
 
 local whirl_Strength_cmd = function (ind, value)
     gPlayerSyncTable[0].whirlStrength = value
+end
+
+local allowOxygen_cmd = function (ind, value)
+    gPlayerSyncTable[0].allowOxygen = value
 end
 
 local function random_float(min, max)
@@ -2276,7 +2281,7 @@ local function mario_update(m)
     end
 
     --AIR METER FUNCTION
-    if (m.health >= 0x100) and (m.flags & MARIO_METAL_CAP) == 0 then
+    if (m.health >= 0x100) and (m.flags & MARIO_METAL_CAP) == 0 and s.allowOxygen then
         local terrainIsSnow = (m.area.terrainType & TERRAIN_MASK) == TERRAIN_SNOW
         if ((m.pos.y >= (m.waterLevel - 140))) then
             e.oxygenAmount = math.min(e.oxygenAmount + 0x15, MAX_OXYGEN)
@@ -2359,7 +2364,9 @@ local airSize = 0.0
 local function hud_render()
     local m = gMarioStates[0]
     local e = gMarioStateExtras[m.playerIndex]
+    local s = gPlayerSyncTable[m.playerIndex]
 
+    
     local prevPos = { x = airMeterpos.x, y = airMeterpos.y, z = airMeterpos.z}
     local prevSize = airSize
     local targetPos = { x = 0, y = 0, z = 0}
@@ -2368,7 +2375,7 @@ local function hud_render()
     airMeterpos = {x = lerp(airMeterpos.x, targetPos.x, 0.5), y = lerp(airMeterpos.y, targetPos.y, 0.5), z = lerp(airMeterpos.z, targetPos.z, 0.5)}
 
     airSize = lerp(airSize, (e.oxygenAmount < MAX_OXYGEN) and 2 or 0, 0.3)
-    if airSize > 0.1 then
+    if s.allowOxygen and airSize > 0.1 then
         djui_hud_set_font(2)
         djui_hud_print_text_interpolated("AIR",prevPos.x+65 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize - 20*prevSize, prevSize,prevSize, airMeterpos.x+65 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize - 20*airSize, airSize,airSize)
         djui_hud_set_color(23, 143, 173, 255)
@@ -2466,6 +2473,7 @@ end)
 hook_mod_menu_text("\\#ffdd00\\==-[\\#de1212\\ General \\#3c99d6\\Settings \\#ffa600\\]-==")
 hook_mod_menu_checkbox("Enable Moveset:", gPlayerSyncTable[0].usingHybird, hybird_cmd)
 hook_mod_menu_checkbox("Enable Fall Damage:", gPlayerSyncTable[0].allowfaDa, allowFall_cmd)
+hook_mod_menu_checkbox("Enable Modern Oxygen System:", gPlayerSyncTable[0].allowOxygen, allowOxygen_cmd)
 hook_mod_menu_checkbox("Swap Water Punch & Spin:", gPlayerSyncTable[0].swapWaterSet, swapWabind_cmd)
 hook_mod_menu_text("\\#ffdd00\\==-[\\#9cf5ff\\ Air Dash \\#ffa600\\]-==")
 hook_mod_menu_checkbox("Enable Air Dash:", gPlayerSyncTable[0].allowAiDa, allowAirDash_cmd)
@@ -2484,8 +2492,9 @@ hook_event(HOOK_ON_HUD_RENDER_BEHIND, hud_render)
 hook_event(HOOK_ON_PLAY_SOUND, function (soundID, pos)
     local m = gMarioStates[0]
     local e = gMarioStateExtras[m.playerIndex]
+    local s = gPlayerSyncTable[m.playerIndex]
 
-    if (m.pos.y >= (m.waterLevel - 140) or e.oxygenAmount >= 0x300) and soundID == SOUND_MOVING_ALMOST_DROWNING then
+    if s.allowOxygen and (m.pos.y >= (m.waterLevel - 140) or e.oxygenAmount >= 0x300) and soundID == SOUND_MOVING_ALMOST_DROWNING then
         return NO_SOUND
     end
 end)
@@ -2493,9 +2502,12 @@ hook_behavior(id_bhvRecoveryHeart, OBJ_LIST_LEVEL, false, nil, bhv_recovery_hear
 hook_event(HOOK_ON_INTERACT, function (m,o,type,value)
     if type == INTERACT_WATER_RING then
         local e = gMarioStateExtras[m.playerIndex]
+        local s = gPlayerSyncTable[m.playerIndex]
 
-        m.healCounter = m.healCounter - 4 * o.oDamageOrCoinValue;
-        e.oxygenAmount = e.oxygenAmount + 0x880/2
+        if s.allowOxygen then
+            m.healCounter = m.healCounter - 4 * o.oDamageOrCoinValue;
+            e.oxygenAmount = e.oxygenAmount + 0x880/2
+        end
     end
 end)
 
