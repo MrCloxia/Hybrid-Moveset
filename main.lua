@@ -38,7 +38,7 @@ ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR |
 ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
---gLevelValues.entryLevel = LEVEL_JRB--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_DDD--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -46,6 +46,7 @@ ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
 local ANGLE_QUEUE_SIZE = 9
 local SPIN_TIMER_SUCCESSFUL_INPUT = 4
+local MAX_OXYGEN = 0x900
 
 local SPINACTIONS = {
     [ACT_JUMP] = true,
@@ -146,6 +147,14 @@ local HOLDJUMPCANCEL = {
     [ACT_HOLD_WATER_ACTION_END] = true,
     [ACT_HOLD_SWIMMING_END] = true,
     [ACT_HOLD_BREASTSTROKE] = true
+}
+
+local WATERHOLDACTIONS = {
+    [ACT_HOLD_WATER_IDLE] = true,
+    [ACT_HOLD_WATER_ACTION_END] = true,
+    [ACT_HOLD_BREASTSTROKE] = true,
+    [ACT_HOLD_FLUTTER_KICK] = true,
+    [ACT_WATER_SHELL_SWIMMING] = true
 }
 
 local convert_actions = {
@@ -250,7 +259,10 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.ssCooldown = 0
     e.ssWaterSpeed = 0
     e.isWaterSliding = false
-    e.oxygenAmount = 0x880
+
+    e.oxygenAmount = MAX_OXYGEN
+    e.lastAirCoin = 0
+    e.lastOxygen = MAX_OXYGEN
 
     e.syncedHeadAngle = {}
     e.syncedHeadAngle.x = 0
@@ -1163,6 +1175,7 @@ end
 
 local function act_drill_down(m)--DRILLING DOWN
     local e = gMarioStateExtras[m.playerIndex]
+    m.peakHeight = m.pos.y--No scream
 
     if not e.fromGround then
         m.forwardVel = math.min(m.forwardVel, 20)
@@ -2258,25 +2271,36 @@ local function mario_update(m)
         end
     end
 
-    if (m.health >= 0x100) then
+    --AIR METER FUNCTION
+    if (m.health >= 0x100) and (m.flags & MARIO_METAL_CAP) == 0 then
         local terrainIsSnow = (m.area.terrainType & TERRAIN_MASK) == TERRAIN_SNOW
-        if ((m.pos.y >= (m.waterLevel - 140)) and not terrainIsSnow) then
-            e.oxygenAmount = e.oxygenAmount + 0x1A;
-            if m.pos.y <= m.waterLevel and WATERACTIONS[m.action] then
+        if ((m.pos.y >= (m.waterLevel - 140))) then
+            e.oxygenAmount = math.min(e.oxygenAmount + 0x15, MAX_OXYGEN)
+
+            if m.pos.y <= m.waterLevel and not terrainIsSnow and (WATERACTIONS[m.action] or m.action == ACT_WATER_GROUND_POUND or m.action == ACT_WATER_DIVE or m.action == ACT_WATER_SPIN or m.action == ACT_DOLPHIN_DIVE or WATERHOLDACTIONS[m.action]) then--Other actions outside of WATERACTIONS also allow you to heal back.
                 m.health = m.health - 0x1A
             end
         else
-            -- if not (m.action & ACT_FLAG_INTANGIBLE) then
-                m.health = m.health + (terrainIsSnow and 3 or 1)
-            -- end
+            m.health = m.health + 1
             e.oxygenAmount = e.oxygenAmount - (terrainIsSnow and 5 or 2)
         end
 
-        if e.oxygenAmount > 0x880 then
-            e.oxygenAmount = 0x880
-        elseif e.oxygenAmount <= 0x100 then
-            m.health = m.health - 0x1A
-            e.oxygenAmount = 0x100
+        if m.playerIndex == 0 then
+            if e.oxygenAmount <= 0x300 then
+                play_sound_with_freq_scale(SOUND_MOVING_ALMOST_DROWNING, gGlobalSoundSource, (e.oxygenAmount <= 0x100 and 1.75 or 1)) 
+            end
+
+            if m.numCoins > 0 and m.numCoins % 1 == 0 and m.numCoins ~= e.lastAirCoin then
+                e.oxygenAmount = math.min(e.oxygenAmount + 0x100, MAX_OXYGEN)
+                e.lastAirCoin = m.numCoins
+            end
+        end
+
+        if e.oxygenAmount > MAX_OXYGEN then
+            e.oxygenAmount = MAX_OXYGEN
+        elseif e.oxygenAmount <= 0x099 then--About to drown.
+            m.health = m.health - 0x09
+            e.oxygenAmount = 0x099
         end
     end
 
@@ -2293,8 +2317,10 @@ local function mario_update(m)
     --DEBUG FUNCTION
     if (m.controller.buttonPressed & Y_BUTTON) ~= 0 then
         --m.health = 0x200
+        --e.oxygenAmount = 0x500
         --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
         --spawn_sync_object(id_bhvChuckya, E_MODEL_CHUCKYA, m.pos.x, m.pos.y, m.pos.z - 500, nil)
+        --spawn_sync_object(id_bhvRecoveryHeart, E_MODEL_HEART, m.pos.x, m.pos.y, m.pos.z - 500, nil)
         --set_water_level(0, m.pos.y + 12, true)
     end
 
@@ -2337,18 +2363,43 @@ local function hud_render()
 
     airMeterpos = {x = lerp(airMeterpos.x, targetPos.x, 0.5), y = lerp(airMeterpos.y, targetPos.y, 0.5), z = lerp(airMeterpos.z, targetPos.z, 0.5)}
 
-    airSize = lerp(airSize, (e.oxygenAmount < 0x880) and 2 or 0, 0.3)
+    airSize = lerp(airSize, (e.oxygenAmount < MAX_OXYGEN) and 2 or 0, 0.3)
     if airSize > 0.1 then
         djui_hud_set_font(2)
         djui_hud_print_text_interpolated("AIR",prevPos.x+65 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize - 20*prevSize, prevSize,prevSize, airMeterpos.x+65 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize - 20*airSize, airSize,airSize)
+        djui_hud_set_color(23, 143, 173, 255)
         djui_hud_render_texture_interpolated(airMeter, prevPos.x+70 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize, prevSize,prevSize, airMeterpos.x+70 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize, airSize,airSize)
         
         -- djui_hud_set_scissor(airMeterpos.x+70 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize,airMeter.width*airSize*(e.oxygenAmount/0x880),airMeter.height * airSize)
         -- djui_hud_set_scissor(0.5,20,100,100)
-        djui_hud_set_color(52, 149, 235,255)
-        djui_hud_render_texture_interpolated(airRings[(e.oxygenAmount >> 8) + 1], prevPos.x+70 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize, prevSize,prevSize, airMeterpos.x+70 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize, airSize,airSize)
+        if e.oxygenAmount <= 0x301 then
+            djui_hud_set_color(227, 57, 57, 255)--red
+        elseif e.oxygenAmount <= 0x500 then
+            djui_hud_set_color(255, 227, 13, 255)--yellow
+        elseif e.oxygenAmount <= 0x700 then
+            djui_hud_set_color(70, 217, 22, 255)--green
+        else
+            djui_hud_set_color(52, 149, 235, 255)--blue
+        end
+        oxygenIndex = math.max(1, math.min((e.oxygenAmount >> 8) + 1, #airRings))
+        if m.playerIndex == 0 then
+            if e.lastOxygen == nil then
+                e.lastOxygen = oxygenIndex
+            elseif oxygenIndex > e.lastOxygen then
+                play_sound_with_freq_scale(SOUND_MENU_POWER_METER, gGlobalSoundSource, 2)
+            end
+
+            e.lastOxygen = oxygenIndex
+        end
+        djui_hud_render_texture_interpolated(airRings[oxygenIndex], prevPos.x+70 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize, prevSize,prevSize, airMeterpos.x+70 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize, airSize,airSize)
         -- djui_hud_render_rect(0,0,1920,1080)
     end
+end
+
+local function wAirBubble_oxyGav(obj)
+    local m = gMarioStates[0]
+    local e = gMarioStateExtras[m.playerIndex]
+    e.oxygenAmount = math.min(e.oxygenAmount + 0x50, MAX_OXYGEN)
 end
 
 ------------------------------------------------------
@@ -2410,7 +2461,17 @@ hook_event(HOOK_MARIO_UPDATE, mario_update)
 hook_event(HOOK_MARIO_UPDATE, no_fall_damage)
 hook_event(HOOK_ON_SET_MARIO_ACTION, mario_on_set_action)
 hook_event(HOOK_BEFORE_SET_MARIO_ACTION, before_set_mario_action)
-hook_event(HOOK_ON_HUD_RENDER, hud_render)
+hook_event(HOOK_ON_HUD_RENDER_BEHIND, hud_render)
+hook_event(HOOK_ON_PLAY_SOUND, function (soundID, pos)
+    local m = gMarioStates[0]
+    local e = gMarioStateExtras[m.playerIndex]
+
+    if (m.pos.y >= (m.waterLevel - 140) or e.oxygenAmount >= 0x300) and soundID == SOUND_MOVING_ALMOST_DROWNING then
+        return NO_SOUND
+    end
+end)
+hook_behavior(id_bhvBubbleMaybe, OBJ_LIST_LEVEL, false, wAirBubble_oxyGav, nil)--Also affect clam's bubbles for some reason???
+--hook_behavior(id_bhvRecoveryHeart, OBJ_LIST_LEVEL, false, wAirBubble_oxyGav, nil)
 
 --REPLACED ACTIONS
 
