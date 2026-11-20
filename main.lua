@@ -2360,6 +2360,7 @@ local airRings = {
 }
 local airMeterpos = { x = 0, y = 0, z = 0 }
 local airSize = 0.0
+local lastMeterCondition = "air"
 
 local function hud_render()
     local m = gMarioStates[0]
@@ -2374,26 +2375,49 @@ local function hud_render()
 
     airMeterpos = {x = lerp(airMeterpos.x, targetPos.x, 0.5), y = lerp(airMeterpos.y, targetPos.y, 0.5), z = lerp(airMeterpos.z, targetPos.z, 0.5)}
 
-    airSize = lerp(airSize, (e.oxygenAmount < MAX_OXYGEN) and 2 or 0, 0.3)
-    if s.allowOxygen and airSize > 0.1 then
+    airSize = lerp(airSize, ((s.allowOxygen and e.oxygenAmount < MAX_OXYGEN) or m.action == ACT_GRABBED) and 2 or 0, 0.3)
+    if m.action == ACT_GRABBED then
+        lastMeterCondition = "struggle"
+    elseif (s.allowOxygen and e.oxygenAmount < MAX_OXYGEN) then
+        lastMeterCondition = "air"
+    end
+
+    if airSize > 0.1 then
         djui_hud_set_font(2)
-        djui_hud_print_text_interpolated("AIR",prevPos.x+65 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize - 20*prevSize, prevSize,prevSize, airMeterpos.x+65 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize - 20*airSize, airSize,airSize)
-        djui_hud_set_color(23, 143, 173, 255)
+        djui_hud_print_text_interpolated((lastMeterCondition == "air") and "AIR" or "STRUGGLE",prevPos.x+65 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize - 20*prevSize, prevSize,prevSize, airMeterpos.x+65 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize - 20*airSize, airSize,airSize)
+        if (lastMeterCondition == "air") then
+            djui_hud_set_color(23, 143, 173, 255)
+        else
+            djui_hud_set_color(227, 51, 16, 255)
+        end
+
         djui_hud_render_texture_interpolated(airMeter, prevPos.x+70 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize, prevSize,prevSize, airMeterpos.x+70 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize, airSize,airSize)
         
         -- djui_hud_set_scissor(airMeterpos.x+70 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize,airMeter.width*airSize*(e.oxygenAmount/0x880),airMeter.height * airSize)
         -- djui_hud_set_scissor(0.5,20,100,100)
-        if e.oxygenAmount <= 0x301 then
-            djui_hud_set_color(227, 57, 57, 255)--red
-        elseif e.oxygenAmount <= 0x500 then
-            djui_hud_set_color(255, 227, 13, 255)--yellow
-        elseif e.oxygenAmount <= 0x700 then
-            djui_hud_set_color(70, 217, 22, 255)--green
+        oxygenIndex = (lastMeterCondition == "air") and math.max(1, math.min((e.oxygenAmount >> 8) + 1, #airRings)) or math.floor(math.max(1, math.min(#airRings, e.grabEscape/33*8+1)))
+        if (e.oxygenAmount < MAX_OXYGEN) then
+            if e.oxygenAmount <= 0x301 then
+                djui_hud_set_color(227, 57, 57, 255)--red
+            elseif e.oxygenAmount <= 0x500 then
+                djui_hud_set_color(255, 227, 13, 255)--yellow
+            elseif e.oxygenAmount <= 0x700 then
+                djui_hud_set_color(70, 217, 22, 255)--green
+            else
+                djui_hud_set_color(52, 149, 235, 255)--blue
+            end
         else
-            djui_hud_set_color(52, 149, 235, 255)--blue
+            if oxygenIndex <= 3 then
+                djui_hud_set_color(138, 0, 0, 255)--blue
+            elseif oxygenIndex <= 5 then
+                djui_hud_set_color(255, 230, 0, 255)--blue
+            elseif oxygenIndex <= 7 then
+                djui_hud_set_color(221, 255, 0, 255)--blue
+            else
+                djui_hud_set_color(47, 255, 0, 255)--blue
+            end
         end
-        oxygenIndex = math.max(1, math.min((e.oxygenAmount >> 8) + 1, #airRings))
-        if m.playerIndex == 0 then
+        if lastMeterCondition == "air" and m.playerIndex == 0 then
             if e.lastOxygen == nil then
                 e.lastOxygen = oxygenIndex
             elseif oxygenIndex > e.lastOxygen then
