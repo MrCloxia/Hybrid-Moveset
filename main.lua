@@ -915,10 +915,13 @@ end
 
 function act_roll(m)--ODYSSEY ROLL
     common_slide_action_with_jump(m, ACT_WALKING, ACT_LONG_JUMP, ACT_FREEFALL, CHAR_ANIM_FORWARD_SPINNING)
+    local e = gMarioStateExtras[m.playerIndex]
 
     if m.action == ACT_LONG_JUMP then
         return
     end
+
+    --apply_slope_accel(m)
 
     local steepness = math.sqrt(m.floor.normal.x * m.floor.normal.x + m.floor.normal.z * m.floor.normal.z);
     local intendedDYaw = m.intendedYaw - m.slideYaw;
@@ -927,16 +930,19 @@ function act_roll(m)--ODYSSEY ROLL
         forward = forward * (0.5 + 0.5 * m.forwardVel / 100.0)
     end
     local upHill = math.abs((m.floorAngle - m.slideYaw + 0x8000) % 0x10000 - 0x8000) > 0x4000
-    
-    apply_slope_accel(m)
+    local flatSurface = math.abs(m.floorAngle) < 0x1000
 
-    if (m.input & INPUT_B_PRESSED) ~= 0 then
+    if (m.input & INPUT_B_PRESSED) ~= 0 and e.ssCooldown == 0 then
         set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
-        mario_set_forward_vel(m, math.max(math.min(120, m.forwardVel + ((m.area.terrainType == TERRAIN_SLIDE and upHill) and 8 or 30)/ (1 + steepness)), 30))
+        if m.area.terrainType == TERRAIN_SLIDE and upHill and not flatSurface then
+            e.ssCooldown = 30
+        end
+        mario_set_forward_vel(m, math.max(math.min(120, m.forwardVel + (upHill and (m.area.terrainType == TERRAIN_SLIDE and 4 or 8) or 20) / (1 + steepness)), 80))
         play_sound(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject)
     end
 
-    mario_set_forward_vel(m, math.min(m.forwardVel, 120))
+    local yawDiff = ((m.intendedYaw - m.faceAngle.y + 0x8000) & 0xFFFF) - 0x8000
+    mario_set_forward_vel(m, math.min(m.forwardVel + (math.abs(yawDiff) > 0x4000 and (flatSurface and -1 or -3) or (upHill and (m.area.terrainType == TERRAIN_SLIDE and 0 or 0.25)) or 0.75), 120))
 
     if (m.forwardVel < 10) then
         if (m.forwardVel < 0) and AIR_STEP_HIT_WALL then
@@ -945,7 +951,6 @@ function act_roll(m)--ODYSSEY ROLL
             set_mario_action(m, ACT_START_CROUCHING, 0)
         end
     end
-
 end
 
 local function act_air_dash(m)--AIR DASH
@@ -1513,6 +1518,7 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
     local s = gPlayerSyncTable[m.playerIndex]
     
     local flatSurface = math.abs(m.floorAngle) < 0x1000
+    local flaSurDX = m.floor.normal.y >= 0.99985
     local steepness = math.sqrt(m.floor.normal.x * m.floor.normal.x + m.floor.normal.z * m.floor.normal.z)
     local upHill = math.abs((m.floorAngle - m.slideYaw + 0x8000) % 0x10000 - 0x8000) > 0x4000
 
@@ -1541,7 +1547,7 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
         end
         set_mario_action(m, ACT_DIVE, 1)
         play_sound_with_freq_scale(SOUND_ACTION_THROW, m.marioObj.header.gfx.cameraToObject, random_float(0.93, 1.5))
-        mario_set_forward_vel(m, math.min((e.isWaterSliding and e.ssWaterSpeed or 50), storeVel + diveSpeed / (1 + steepness * 2)))
+        mario_set_forward_vel(m, math.min((e.isWaterSliding and e.ssWaterSpeed or m.area.terrainType == TERRAIN_SLIDE and not flaSurDX and not upHill and math.max(storeVel, 80) or 50), storeVel + diveSpeed / (1 + steepness * 2)))
         if e.isWaterSliding and storeVel >= 64 then
             m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
             play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
@@ -2018,8 +2024,6 @@ local function mario_on_set_action(m)
         e.grabStruggle = false
         e.lastAnaDir = 0
         e.nexAnim = 1
-    elseif m.action == ACT_ROLL then
-        mario_set_forward_vel(m, math.max(m.forwardVel * 1.05, 30))
     end
 end
 
