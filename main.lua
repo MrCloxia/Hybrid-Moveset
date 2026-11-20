@@ -2400,10 +2400,25 @@ local function hud_render()
     end
 end
 
-local function wAirBubble_oxyGav(obj)
-    local m = gMarioStates[0]
-    local e = gMarioStateExtras[m.playerIndex]
-    e.oxygenAmount = math.min(e.oxygenAmount + 0x50, MAX_OXYGEN)
+local function bhv_recovery_heart_loop(o)
+    if (o.oAngleVelYaw) <= 400 then
+        o.oUnkBC = 0
+    end
+
+    o.oUnkBC = o.oUnkBC + o.oAngleVelYaw
+    if (o.oUnkBC >= 0x10000) then
+
+        local nearestInteractingState = nearest_interacting_mario_state_to_object(o);
+        for i = 0, #gMarioStates do
+            if gMarioStates[i].visibleToObjects then
+                if (gMarioStates[i] == nearestInteractingState) then
+                    local e = gMarioStateExtras[gMarioStates[i].playerIndex]
+                    e.oxygenAmount = e.oxygenAmount + 0x880/4
+                end
+            end
+        end
+        o.oUnkBC = o.oUnkBC - 0x10000;
+    end
 end
 
 ------------------------------------------------------
@@ -2474,8 +2489,15 @@ hook_event(HOOK_ON_PLAY_SOUND, function (soundID, pos)
         return NO_SOUND
     end
 end)
-hook_behavior(id_bhvBubbleMaybe, OBJ_LIST_LEVEL, false, wAirBubble_oxyGav, nil)--Also affect clam's bubbles for some reason???
---hook_behavior(id_bhvRecoveryHeart, OBJ_LIST_LEVEL, false, wAirBubble_oxyGav, nil)
+hook_behavior(id_bhvRecoveryHeart, OBJ_LIST_LEVEL, false, nil, bhv_recovery_heart_loop)
+hook_event(HOOK_ON_INTERACT, function (m,o,type,value)
+    if type == INTERACT_WATER_RING then
+        local e = gMarioStateExtras[m.playerIndex]
+
+        m.healCounter = m.healCounter - 4 * o.oDamageOrCoinValue;
+        e.oxygenAmount = e.oxygenAmount + 0x880/2
+    end
+end)
 
 --REPLACED ACTIONS
 
