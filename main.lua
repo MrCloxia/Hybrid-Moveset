@@ -937,12 +937,12 @@ function act_roll(m)--ODYSSEY ROLL
         if m.area.terrainType == TERRAIN_SLIDE and upHill and not flatSurface then
             e.ssCooldown = 30
         end
-        mario_set_forward_vel(m, math.max(math.min(120, m.forwardVel + (upHill and (m.area.terrainType == TERRAIN_SLIDE and 4 or 8) or 20) / (1 + steepness)), 80))
+        mario_set_forward_vel(m, math.max(math.min(140, m.forwardVel + (upHill and (m.area.terrainType == TERRAIN_SLIDE and 4 or 8) or 20) / (1 + steepness)), 80))
         play_sound(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject)
     end
 
     local yawDiff = ((m.intendedYaw - m.faceAngle.y + 0x8000) & 0xFFFF) - 0x8000
-    mario_set_forward_vel(m, math.min(m.forwardVel + (math.abs(yawDiff) > 0x4000 and (flatSurface and -1 or -3) or (upHill and (m.area.terrainType == TERRAIN_SLIDE and 0 or 0.25)) or 0.75), 120))
+    mario_set_forward_vel(m, math.min(m.forwardVel + (math.abs(yawDiff) > 0x4000 and (flatSurface and -1 or -3) or (upHill and (m.area.terrainType == TERRAIN_SLIDE and 0 or 0.25)) or 0.75), 140))
 
     if (m.forwardVel < 10) then
         if (m.forwardVel < 0) and AIR_STEP_HIT_WALL then
