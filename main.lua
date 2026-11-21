@@ -264,6 +264,10 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.oxygenAmount = MAX_OXYGEN
     e.lastAirCoin = 0
     e.lastOxygen = MAX_OXYGEN
+    e.oxygenCooldown = 0
+    e.wasinToxic = false
+
+    e.lastLives = m.numLives
 
     e.syncedHeadAngle = {}
     e.syncedHeadAngle.x = 0
@@ -634,6 +638,9 @@ local function act_water_dive(m)--WATER DIVE
         if not e.ADtWD then
             play_sound(SOUND_GENERAL_SWISH_WATER, m.marioObj.header.gfx.cameraToObject)
             play_sound_with_freq_scale(SOUND_GENERAL_MOVING_WATER, m.marioObj.header.gfx.cameraToObject, random_float(4.5, 5.37))
+        else
+            play_sound_with_freq_scale(SOUND_OBJ_DIVING_INTO_WATER, m.marioObj.header.gfx.cameraToObject, 0.73)
+            set_mario_particle_flags(m, PARTICLE_WATER_SPLASH, 0)
         end
     elseif m.actionTimer == 10 then
         e.ADtWD = false
@@ -790,6 +797,7 @@ local function act_water_pound_jump(m)--WATER POUND JUMP
 end
 
 local function act_dolphin_dive(m)--DOLPHIN DIVE
+local s = gPlayerSyncTable[m.playerIndex]
     local stepResult = common_air_action_step(m, ACT_FREEFALL, CHAR_ANIM_DIVE, AIR_STEP_CHECK_LEDGE_GRAB | AIR_STEP_CHECK_HANG)
     -- perform_air_step(m, 0)
 
@@ -798,8 +806,19 @@ local function act_dolphin_dive(m)--DOLPHIN DIVE
     end
 
     if stepResult == AIR_STEP_LANDED then
-        set_mario_action(m, ACT_DIVE_SLIDE, 0)
-        return
+        if s.allowfaDa then
+            if should_get_stuck_in_ground(m) ~= 0 then
+                m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
+                play_mario_sound(m, 0, CHAR_SOUND_OOOF2)
+                set_mario_particle_flags(m, PARTICLE_MIST_CIRCLE, 0)
+                return set_mario_action(m, ACT_HEAD_STUCK_IN_GROUND, 0)
+            end
+
+            if check_fall_damage(m, ACT_HARD_BACKWARD_GROUND_KB) ~= 0 then
+                return 1
+            end
+        end
+        return set_mario_action(m, ACT_DIVE_SLIDE, 0)
     end
 
     if (m.pos.y < m.waterLevel - 100) then
@@ -824,7 +843,7 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
     update_air_without_turn(m);
 
     if m.actionTimer == 0 then
-        set_mario_animation(m, CHAR_ANIM_A_POSE)--Needs to be different cause for an example, doing Star Spin then an Whirlwind, it'll not actually change the animation to the custom one due to it before being the same animation. 
+        set_mario_animation(m, CHAR_ANIM_RUNNING_UNUSED)--Needs to be different cause for an example, doing Star Spin then an Whirlwind, it'll not actually change the animation to the custom one due to it before being the same animation. 
         smlua_anim_util_set_animation(m.marioObj, (e.fromGround and "star_spin_ground" or "star_spin"))
     end
 
@@ -881,6 +900,7 @@ end
 local function act_spin_jump_end(m)--GALAXY SPIN END / STAR SPIN END / SPIN JUMP END
     local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
     local e = gMarioStateExtras[m.playerIndex]
+    local s = gPlayerSyncTable[m.playerIndex]
     
     m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y)
 
@@ -893,8 +913,20 @@ local function act_spin_jump_end(m)--GALAXY SPIN END / STAR SPIN END / SPIN JUMP
         e.didSpin = false
         set_mario_action(m, ACT_LEDGE_GRAB, 0)
     elseif stepResult == AIR_STEP_LANDED then
-        set_mario_action(m, ACT_FREEFALL_LAND, 0)
-        return
+        if s.allowfaDa then
+            if should_get_stuck_in_ground(m) ~= 0 then
+                m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
+                play_mario_sound(m, 0, CHAR_SOUND_OOOF2)
+                set_mario_particle_flags(m, PARTICLE_MIST_CIRCLE, 0)
+                return set_mario_action(m, ACT_FEET_STUCK_IN_GROUND, 0)
+            end
+
+            if check_fall_damage(m, ACT_HARD_BACKWARD_GROUND_KB) ~= 0 then
+                return 1
+            end
+        end
+
+        return set_mario_action(m, ACT_FREEFALL_LAND, 0)
     end
 
     if stepResult == AIR_STEP_HIT_WALL then
@@ -988,25 +1020,32 @@ local function act_air_dash(m)--AIR DASH
 end
 
 local function act_air_dash_end(m)--AIR DASH END
+    local s = gPlayerSyncTable[m.playerIndex]
+    
     m.vel.y = m.vel.y - 0.5
     set_mario_animation(m, CHAR_ANIM_FALL_FROM_SLIDE_KICK)
+
     local stepResult = perform_air_step(m, 0)
     if stepResult == AIR_STEP_NONE then
         if m.intendedMag > 0 then
-            local dirDif = m.intendedYaw - m.faceAngle.y
-            if dirDif > 0x8000 then
-                dirDif = dirDif - 0x10000
-            elseif dirDif < -0x8000 then
-                dirDif = dirDif + 0x10000
-            end
-            if math.abs(dirDif) < 0x4000 then--Holding forward.
-                mario_set_forward_vel(m, math.max(m.forwardVel, 20))
-            elseif math.abs(dirDif) > 0x4000 then--Holding backward.
-                mario_set_forward_vel(m, math.max(m.forwardVel - 1, -2))
-            end
+            local yawDiff = (m.intendedYaw - m.faceAngle.y)
+            mario_set_forward_vel(m, math.max(m.forwardVel + (math.abs(yawDiff) > 0x4000 and -1 or 1), -2))
         end
     elseif stepResult == AIR_STEP_LANDED then
-        set_mario_action(m, ACT_FREEFALL_LAND, 0)
+        if s.allowfaDa then
+            if should_get_stuck_in_ground(m) ~= 0 then
+                m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
+                play_mario_sound(m, 0, CHAR_SOUND_OOOF2)
+                set_mario_particle_flags(m, PARTICLE_MIST_CIRCLE, 0)
+                return set_mario_action(m, ACT_FEET_STUCK_IN_GROUND, 0)
+            end
+
+            if check_fall_damage(m, ACT_HARD_BACKWARD_GROUND_KB) ~= 0 then
+                return 1
+            end
+        end
+
+        return set_mario_action(m, ACT_FREEFALL_LAND, 0)
     end
 
     if stepResult == AIR_STEP_HIT_WALL and (m.input & INPUT_A_PRESSED) ~= 0 then
@@ -1509,10 +1548,24 @@ function act_ground_pound(m)
 
         stepResult = perform_air_step(m, 0);
         if (stepResult == AIR_STEP_LANDED) then
+            if s.allowfaDa then
+                if should_get_stuck_in_ground(m) ~= 0 then
+                    m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
+                    play_mario_sound(m, 0, CHAR_SOUND_OOOF2)
+                    set_mario_particle_flags(m, PARTICLE_MIST_CIRCLE, 0)
+                    return set_mario_action(m, ACT_BUTT_STUCK_IN_GROUND, 0)
+                end
+
+                if check_fall_damage(m, ACT_HARD_BACKWARD_GROUND_KB) ~= 0 then
+                    return 1
+                end
+            end
             play_mario_heavy_landing_sound(m, SOUND_ACTION_TERRAIN_HEAVY_LANDING)
             set_mario_particle_flags(m, (PARTICLE_MIST_CIRCLE | PARTICLE_HORIZONTAL_STAR), false);
             set_mario_action(m, ACT_GROUND_POUND_LAND, 0)
-            if (m.playerIndex == 0) then set_camera_shake_from_hit(SHAKE_GROUND_POUND) end
+            if (m.playerIndex == 0) then 
+                set_camera_shake_from_hit(SHAKE_GROUND_POUND) 
+            end
         end
     end
 end
@@ -1664,6 +1717,7 @@ function act_grabbed(m)--ESCAPE OUT OF AN GRAB
                 if e.grabEscape > 1 and m.playerIndex == 0 then
                     play_sound_with_freq_scale(SOUND_MENU_YOSHI_GAIN_LIVES, m.marioObj.header.gfx.cameraToObject, (e.grabEscape / 100) + 0.98)
                     queue_rumble_data_mario(m, 1, 30)
+                    set_camera_shake_from_hit(SHAKE_SHOCK)
                 end
 
                 if e.grabEscape > 0 and e.grabEscape % 8 == 0 then
@@ -1672,7 +1726,6 @@ function act_grabbed(m)--ESCAPE OUT OF AN GRAB
                     m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
                     play_mario_sound(m, 0, strugVoices[selVoice])
                 end
-                set_camera_shake_from_hit(SHAKE_SHOCK)
             else
                 play_sound_with_freq_scale(SOUND_GENERAL_RACE_GUN_SHOT, m.marioObj.header.gfx.cameraToObject, 2)
                 queue_rumble_data_mario(m, 5, 10)
@@ -1710,11 +1763,24 @@ function act_grabbed(m)--ESCAPE OUT OF AN GRAB
 end
 
 local function act_grabbed_jump(m)
+    local s = gPlayerSyncTable[m.playerIndex]
     stepResult = common_air_action_step(m, ACT_FORWARD_AIR_KB, CHAR_ANIM_SINGLE_JUMP, AIR_STEP_CHECK_LEDGE_GRAB | AIR_STEP_CHECK_HANG)
 
     if stepResult == AIR_STEP_LANDED then
-        set_mario_action(m, ACT_JUMP_LAND, 0)
-        return
+        if s.allowfaDa then
+            if should_get_stuck_in_ground(m) ~= 0 then
+                m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
+                play_mario_sound(m, 0, CHAR_SOUND_OOOF2)
+                set_mario_particle_flags(m, PARTICLE_MIST_CIRCLE, 0)
+                return set_mario_action(m, ACT_FEET_STUCK_IN_GROUND, 0)
+            end
+
+            if check_fall_damage(m, ACT_HARD_BACKWARD_GROUND_KB) ~= 0 then
+                return 1
+            end
+        end
+
+        return set_mario_action(m, ACT_JUMP_LAND, 0)
     end
 end
 
@@ -2281,17 +2347,30 @@ local function mario_update(m)
     end
 
     --AIR METER FUNCTION
-    if (m.health >= 0x100) and (m.flags & MARIO_METAL_CAP) == 0 and s.allowOxygen then
+    if (m.health >= 0x100) and s.allowOxygen then
         local terrainIsSnow = (m.area.terrainType & TERRAIN_MASK) == TERRAIN_SNOW
-        if ((m.pos.y >= (m.waterLevel - 140))) then
-            e.oxygenAmount = math.min(e.oxygenAmount + 0x15, MAX_OXYGEN)
+        local isMetal = (m.flags & MARIO_METAL_CAP) ~= 0
+        local isToxic = (m.input & INPUT_IN_POISON_GAS) ~= 0
+        local toxicFactor = e.wasinToxic and 2 or 0
 
-            if m.pos.y <= m.waterLevel and not terrainIsSnow and (WATERACTIONS[m.action] or m.action == ACT_WATER_GROUND_POUND or m.action == ACT_WATER_DIVE or m.action == ACT_WATER_SPIN or m.action == ACT_DOLPHIN_DIVE or WATERHOLDACTIONS[m.action]) then--Other actions outside of WATERACTIONS also allow you to heal back.
+        if isToxic then
+            e.oxygenCooldown = (isMetal and 0 or 80)
+            e.wasinToxic = true
+        elseif (m.action & ACT_FLAG_SWIMMING) ~= 0 then
+            e.wasinToxic = false
+        end
+    
+        if ((m.pos.y >= (m.waterLevel - 140))) and not isToxic or isMetal then
+            if e.oxygenCooldown == 0 then
+                e.oxygenAmount = math.min(e.oxygenAmount + 0x15, MAX_OXYGEN)
+            end
+
+            if m.pos.y <= m.waterLevel and not terrainIsSnow and not isMetal and (WATERACTIONS[m.action] or m.action == ACT_WATER_GROUND_POUND or m.action == ACT_WATER_GROUND_POUND_LAND or m.action == ACT_WATER_DIVE or m.action == ACT_WATER_POUND_JUMP or m.action == ACT_WATER_SPIN or m.action == ACT_DOLPHIN_DIVE or WATERHOLDACTIONS[m.action]) then--Other actions outside of WATERACTIONS also allow you to heal back.
                 m.health = m.health - 0x1A
             end
         else
-            m.health = m.health + 1
-            e.oxygenAmount = e.oxygenAmount - (terrainIsSnow and 5 or 2)
+            m.health = m.health + (isToxic and 4 or 1)
+            e.oxygenAmount = e.oxygenAmount - (terrainIsSnow and 5 + toxicFactor or 2 + toxicFactor)
         end
 
         if m.playerIndex == 0 then
@@ -2307,10 +2386,21 @@ local function mario_update(m)
 
         if e.oxygenAmount > MAX_OXYGEN then
             e.oxygenAmount = MAX_OXYGEN
-        elseif e.oxygenAmount <= 0x099 then--About to drown.
-            m.health = m.health - 0x09
+        elseif e.oxygenAmount <= 0x099 and not isMetal then--About to drown or die from toxic gas.
+            m.health = m.health - (isToxic and 0x13 or 0x09)
             e.oxygenAmount = 0x099
         end
+    end
+
+    if e.oxygenCooldown > 0 then
+        e.oxygenCooldown = e.oxygenCooldown - 1  
+    end
+
+    if gLevelValues.mushroom1UpHeal ~= 0 then
+        if m.numLives > e.lastLives then
+            e.oxygenAmount = MAX_OXYGEN
+        end
+        e.lastLives = m.numLives
     end
 
     --EMOTE SIT
@@ -2367,7 +2457,6 @@ local function hud_render()
     local e = gMarioStateExtras[m.playerIndex]
     local s = gPlayerSyncTable[m.playerIndex]
 
-    
     local prevPos = { x = airMeterpos.x, y = airMeterpos.y, z = airMeterpos.z}
     local prevSize = airSize
     local targetPos = { x = 0, y = 0, z = 0}
@@ -2386,7 +2475,11 @@ local function hud_render()
         djui_hud_set_font(2)
         djui_hud_print_text_interpolated((lastMeterCondition == "air") and "AIR" or "STRUGGLE",prevPos.x+65 - airMeter.width/2*prevSize, prevPos.y-220 - airMeter.height/2*prevSize - 20*prevSize, prevSize,prevSize, airMeterpos.x+65 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize - 20*airSize, airSize,airSize)
         if (lastMeterCondition == "air") then
-            djui_hud_set_color(23, 143, 173, 255)
+            if e.wasinToxic then
+                djui_hud_set_color(46, 171, 0, 255)
+            else
+                djui_hud_set_color(23, 143, 173, 255)
+            end
         else
             djui_hud_set_color(227, 51, 16, 255)
         end
@@ -2396,7 +2489,7 @@ local function hud_render()
         -- djui_hud_set_scissor(airMeterpos.x+70 - airMeter.width/2*airSize, airMeterpos.y-220 - airMeter.height/2*airSize,airMeter.width*airSize*(e.oxygenAmount/0x880),airMeter.height * airSize)
         -- djui_hud_set_scissor(0.5,20,100,100)
         oxygenIndex = (lastMeterCondition == "air") and math.max(1, math.min((e.oxygenAmount >> 8) + 1, #airRings)) or math.floor(math.max(1, math.min(#airRings, e.grabEscape/33*8+1)))
-        if (e.oxygenAmount < MAX_OXYGEN) then
+        if (e.oxygenAmount <= MAX_OXYGEN) and lastMeterCondition == "air" then
             if e.oxygenAmount <= 0x301 then
                 djui_hud_set_color(227, 57, 57, 255)--red
             elseif e.oxygenAmount <= 0x500 then
@@ -2408,13 +2501,13 @@ local function hud_render()
             end
         else
             if oxygenIndex <= 3 then
-                djui_hud_set_color(138, 0, 0, 255)--blue
+                djui_hud_set_color(138, 0, 0, 255)--red
             elseif oxygenIndex <= 5 then
-                djui_hud_set_color(255, 230, 0, 255)--blue
+                djui_hud_set_color(255, 230, 0, 255)--yellow
             elseif oxygenIndex <= 7 then
-                djui_hud_set_color(221, 255, 0, 255)--blue
+                djui_hud_set_color(221, 255, 0, 255)--lime
             else
-                djui_hud_set_color(47, 255, 0, 255)--blue
+                djui_hud_set_color(47, 255, 0, 255)--green
             end
         end
         if lastMeterCondition == "air" and m.playerIndex == 0 then
@@ -2518,19 +2611,24 @@ hook_event(HOOK_ON_PLAY_SOUND, function (soundID, pos)
     local e = gMarioStateExtras[m.playerIndex]
     local s = gPlayerSyncTable[m.playerIndex]
 
-    if s.allowOxygen and (m.pos.y >= (m.waterLevel - 140) or e.oxygenAmount >= 0x300) and soundID == SOUND_MOVING_ALMOST_DROWNING then
+    if s.allowOxygen and (m.pos.y >= (m.waterLevel - 140) or e.oxygenAmount >= 0x300) and not e.wasinToxic and soundID == SOUND_MOVING_ALMOST_DROWNING then
         return NO_SOUND
     end
 end)
 hook_behavior(id_bhvRecoveryHeart, OBJ_LIST_LEVEL, false, nil, bhv_recovery_heart_loop)
 hook_event(HOOK_ON_INTERACT, function (m,o,type,value)
-    if type == INTERACT_WATER_RING then
-        local e = gMarioStateExtras[m.playerIndex]
-        local s = gPlayerSyncTable[m.playerIndex]
-
-        if s.allowOxygen then
+    local e = gMarioStateExtras[m.playerIndex]
+    local s = gPlayerSyncTable[m.playerIndex]
+    if s.allowOxygen then
+        if type == INTERACT_WATER_RING then
             m.healCounter = m.healCounter - 4 * o.oDamageOrCoinValue;
             e.oxygenAmount = e.oxygenAmount + 0x880/2
+        elseif type == INTERACT_STAR_OR_KEY then
+            for mod in pairs(gActiveMods) do
+                if gActiveMods[mod].name == "Star Heal \\#0FFF3F\\1.0" then
+                    e.oxygenAmount = MAX_OXYGEN
+                end
+            end
         end
     end
 end)
