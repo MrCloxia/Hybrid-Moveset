@@ -262,7 +262,6 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.isWaterSliding = false
 
     e.oxygenAmount = MAX_OXYGEN
-    e.lastAirCoin = 0
     e.lastOxygen = MAX_OXYGEN
     e.oxygenCooldown = 0
     e.wasinToxic = false
@@ -847,6 +846,11 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
         smlua_anim_util_set_animation(m.marioObj, (e.fromGround and "star_spin_ground" or "star_spin"))
     end
 
+    if m.intendedMag > 0 then
+        local yawDiff = (m.intendedYaw - m.faceAngle.y)
+        mario_set_forward_vel(m, math.max(math.min(m.forwardVel + (math.abs(yawDiff) > 0x4000 and -0.7 or 0.1), 80), -8))
+    end
+
     if stepResult == AIR_STEP_HIT_LAVA_WALL then
         lava_boost_on_wall(m)
         return
@@ -901,6 +905,11 @@ local function act_spin_jump_end(m)--GALAXY SPIN END / STAR SPIN END / SPIN JUMP
     local stepResult = perform_air_step(m, AIR_STEP_CHECK_LEDGE_GRAB)
     local e = gMarioStateExtras[m.playerIndex]
     local s = gPlayerSyncTable[m.playerIndex]
+
+    if m.intendedMag > 0 then
+        local yawDiff = (m.intendedYaw - m.faceAngle.y)
+        mario_set_forward_vel(m, math.max(math.min(m.forwardVel + (math.abs(yawDiff) > 0x4000 and -2 or 0.1), 80), -15))
+    end
     
     m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y)
 
@@ -974,7 +983,7 @@ function act_roll(m)--ODYSSEY ROLL
         if m.area.terrainType == TERRAIN_SLIDE and upHill and not flatSurface then
             e.ssCooldown = 30
         end
-        mario_set_forward_vel(m, math.max(math.min(140, m.forwardVel + (upHill and (m.area.terrainType == TERRAIN_SLIDE and 4 or 8) or 20) / (1 + steepness)), 80))
+        mario_set_forward_vel(m, math.max(math.min(m.forwardVel + (upHill and (m.area.terrainType == TERRAIN_SLIDE and 4 or 8) or 20) / (1 + steepness), 120), 100))
         play_sound(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject)
     end
 
@@ -1029,7 +1038,7 @@ local function act_air_dash_end(m)--AIR DASH END
     if stepResult == AIR_STEP_NONE then
         if m.intendedMag > 0 then
             local yawDiff = (m.intendedYaw - m.faceAngle.y)
-            mario_set_forward_vel(m, math.max(m.forwardVel + (math.abs(yawDiff) > 0x4000 and -1 or 1), -2))
+            mario_set_forward_vel(m, math.max(math.min(m.forwardVel + (math.abs(yawDiff) > 0x4000 and -1 or 1), 50), -15))
         end
     elseif stepResult == AIR_STEP_LANDED then
         if s.allowfaDa then
@@ -1132,7 +1141,9 @@ local function act_twirl_n_place(m)--SUNSHINE SPIN / TWIRL N PLACE / WHIRLWIND
     
     if stepResult == GROUND_STEP_LEFT_GROUND then
         e.twirlSFX = e.twirlSFX + 1
-        if (e.twirlSFX == 3 or e.twirlSFX == 6 or e.twirlSFX == 9) then
+        if e.twirlSFX == 1 then
+            e.spinSpeed = 13
+        elseif (e.twirlSFX == 3 or e.twirlSFX == 6 or e.twirlSFX == 9) then
             play_sound_with_freq_scale(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject, (e.twirlSFX == 3 and 0.8 or e.twirlSFX == 6 and 1 or e.twirlSFX == 9 and 1.8))
         end
         e.didTwiAir = true
@@ -2234,7 +2245,7 @@ local function mario_update(m)
             set_mario_action(m, ACT_SPIN_JUMP, 1)
             selVoice = math.random(1, 2)
             play_mario_sound(m, SOUND_ACTION_TWIRL, (selVoice == 1 and CHAR_SOUND_PUNCH_HOO or CHAR_SOUND_HOOHOO))
-            mario_set_forward_vel(m,math.abs(m.forwardVel))
+            mario_set_forward_vel(m, math.abs(m.forwardVel))
             m.faceAngle.y = m.intendedYaw
             e.spinInput = 0
             e.didSpin = true
@@ -2321,7 +2332,7 @@ local function mario_update(m)
         m.squishTimer = 0
         e.didTwiAir = false
         e.didTwiJump = false
-        mario_set_forward_vel(m, 100)
+        mario_set_forward_vel(m, 120)
         play_sound_with_freq_scale(SOUND_OBJ2_MRI_SPINNING, m.marioObj.header.gfx.cameraToObject, 1.8)
         set_mario_action(m, ACT_ROLL, 0)
     end
@@ -2376,11 +2387,6 @@ local function mario_update(m)
         if m.playerIndex == 0 then
             if e.oxygenAmount <= 0x300 then
                 play_sound_with_freq_scale(SOUND_MOVING_ALMOST_DROWNING, gGlobalSoundSource, (e.oxygenAmount <= 0x100 and 1.75 or 1)) 
-            end
-
-            if m.numCoins > 0 and m.numCoins % 1 == 0 and m.numCoins ~= e.lastAirCoin then
-                e.oxygenAmount = math.min(e.oxygenAmount + 0x100, MAX_OXYGEN)
-                e.lastAirCoin = m.numCoins
             end
         end
 
@@ -2620,7 +2626,9 @@ hook_event(HOOK_ON_INTERACT, function (m,o,type,value)
     local e = gMarioStateExtras[m.playerIndex]
     local s = gPlayerSyncTable[m.playerIndex]
     if s.allowOxygen then
-        if type == INTERACT_WATER_RING then
+        if type == INTERACT_COIN then
+            e.oxygenAmount = math.min(e.oxygenAmount + 0x100, MAX_OXYGEN)
+        elseif type == INTERACT_WATER_RING then
             m.healCounter = m.healCounter - 4 * o.oDamageOrCoinValue;
             e.oxygenAmount = e.oxygenAmount + 0x880/2
         elseif type == INTERACT_STAR_OR_KEY then
