@@ -38,7 +38,7 @@ ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR |
 ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
---gLevelValues.entryLevel = LEVEL_DDD--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_PSS--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -95,7 +95,6 @@ local SHINESPINACTIONS = {
     [ACT_SPECIAL_TRIPLE_JUMP] = true,
     [ACT_LONG_JUMP] = true,
     [ACT_WALL_KICK_AIR] = true,
-    [ACT_DIVE] = true,
     [ACT_SIDE_FLIP] = true,
     [ACT_TWIRL_N_PLACE] = true,
     [ACT_AIR_DASH_END] = true,
@@ -237,7 +236,6 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.didTwiJump = false
     e.didTwiAir = false
     e.inTwiAir = false
-    e.twirlSFX = 0
     e.airTime = 0
     e.twirlWalls = 2
     e.fromWall = false
@@ -257,6 +255,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.grabStruggle = false
     e.lastAnaDir = 0
 
+    e.didRoLoTrick = false
     e.ssCooldown = 0
     e.ssWaterSpeed = 0
     e.isWaterSliding = false
@@ -962,12 +961,21 @@ end
 function act_roll(m)--ODYSSEY ROLL
     common_slide_action_with_jump(m, ACT_WALKING, ACT_LONG_JUMP, ACT_FREEFALL, CHAR_ANIM_FORWARD_SPINNING)
     local e = gMarioStateExtras[m.playerIndex]
+    --apply_slope_accel(m)
+    
+    if (m.input & INPUT_A_PRESSED) ~= 0 then--Roll to Long Jump boost trick.
+        local roLoTrick = (m.actionTimer < 8 and 25 or 0)
 
-    if m.action == ACT_LONG_JUMP then
+        if roLoTrick == 25 then
+            e.didRoLoTrick = true
+        else
+            e.didRoLoTrick = false
+        end
+
+        set_mario_action(m, ACT_LONG_JUMP, 0)
+        m.forwardVel = m.forwardVel + roLoTrick
         return
     end
-
-    --apply_slope_accel(m)
 
     local steepness = math.sqrt(m.floor.normal.x * m.floor.normal.x + m.floor.normal.z * m.floor.normal.z);
     local intendedDYaw = m.intendedYaw - m.slideYaw;
@@ -980,11 +988,9 @@ function act_roll(m)--ODYSSEY ROLL
 
     if (m.input & INPUT_B_PRESSED) ~= 0 and e.ssCooldown == 0 then
         set_mario_particle_flags(m, PARTICLE_HORIZONTAL_STAR, 0)
-        if m.area.terrainType == TERRAIN_SLIDE and upHill and not flatSurface then
-            e.ssCooldown = 30
-        end
         mario_set_forward_vel(m, math.max(math.min(m.forwardVel + (upHill and (m.area.terrainType == TERRAIN_SLIDE and 4 or 8) or 20) / (1 + steepness), 120), 100))
         play_sound(SOUND_ACTION_TWIRL, m.marioObj.header.gfx.cameraToObject)
+        e.ssCooldown = 3 * (m.area.terrainType == TERRAIN_SLIDE and upHill and not flatSurface and 10 or 1)
     end
 
     local yawDiff = ((m.intendedYaw - m.faceAngle.y + 0x8000) & 0xFFFF) - 0x8000
@@ -997,6 +1003,8 @@ function act_roll(m)--ODYSSEY ROLL
             set_mario_action(m, ACT_START_CROUCHING, 0)
         end
     end
+
+    m.actionTimer = m.actionTimer + 1
 end
 
 local function act_air_dash(m)--AIR DASH
@@ -1615,13 +1623,7 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
             e.ssCooldown = 30
         end
         set_mario_action(m, ACT_DIVE, 1)
-        play_sound_with_freq_scale(SOUND_ACTION_THROW, m.marioObj.header.gfx.cameraToObject, random_float(0.93, 1.5))
         mario_set_forward_vel(m, math.min((e.isWaterSliding and e.ssWaterSpeed or m.area.terrainType == TERRAIN_SLIDE and not flaSurDX and not upHill and math.max(storeVel, 80) or 50), storeVel + diveSpeed / (1 + steepness * 2)))
-        if e.isWaterSliding and storeVel >= 64 then
-            m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
-            play_mario_sound(m, 0, CHAR_SOUND_YAHOO_WAHA_YIPPEE)
-            set_mario_particle_flags(m, PARTICLE_BREATH, 0)
-        end
         return
     end
 
@@ -2162,6 +2164,25 @@ local function mario_update(m)
             e.ssCooldown = 60--Don't want you to constantly spam it going upwards.
             set_mario_action(m, ((yawDiff > 0x6080 or yawDiff < -0x6080) and ACT_FORWARD_ROLLOUT or ACT_BACKWARD_ROLLOUT), 0)
         end
+    end
+
+    if m.action == ACT_LONG_JUMP and m.prevAction == ACT_ROLL and e.didRoLoTrick then--Roll to Long Jump boost trick.
+        if m.marioObj.header.gfx.animInfo.animFrame == 0 then
+            stop_sounds_from_source(m.marioObj.header.gfx.cameraToObject)
+            play_character_sound_offset(m, CHAR_SOUND_YAHOO_WAHA_YIPPEE, math.random(3, 4) << 16)
+            play_sound_with_freq_scale(SOUND_ACTION_FLYING_FAST, m.marioObj.header.gfx.cameraToObject, 2)
+        end
+        set_mario_particle_flags(m, (m.marioObj.header.gfx.animInfo.animFrame < 3 and PARTICLE_SPARKLES or 0) | (m.marioObj.header.gfx.animInfo.animFrame < 10 and PARTICLE_DUST or 0), 0)
+    end
+
+    if m.action == ACT_DIVE and m.prevAction == ACT_DIVE_SLIDE and (e.isWaterSliding or m.area.terrainType == TERRAIN_SLIDE) and m.forwardVel >= 64 then--Fast dive slide jump.
+        m.actionTimer = m.actionTimer + 1
+        if m.actionTimer == 2 then
+            stop_sounds_from_source(m.marioObj.header.gfx.cameraToObject)
+            play_sound_with_freq_scale(SOUND_ACTION_THROW, m.marioObj.header.gfx.cameraToObject, random_float(0.93, 1.5))
+            play_character_sound_offset(m, CHAR_SOUND_YAHOO_WAHA_YIPPEE, math.random(3, 4) << 16)
+        end
+        set_mario_particle_flags(m, (m.actionTimer < 3 and (PARTICLE_BREATH | PARTICLE_DUST) or 0), 0)
     end
 
     if e.ssCooldown > 0 then
