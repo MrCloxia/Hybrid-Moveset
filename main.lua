@@ -25,7 +25,8 @@ ACT_ROLL = allocate_mario_action(ACT_GROUP_MOVING)
 ACT_AIR_DASH = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION | ACT_FLAG_ATTACKING)
 ACT_AIR_DASH_END = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_TWIRL_N_PLACE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
-ACT_DRILL_DOWN = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_DRILL_DOWN = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION  | ACT_FLAG_ATTACKING)
+ACT_DRILL_DOWN_LAND = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_ATTACKING)
 ACT_DOLPHIN_DIVE = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION | ACT_FLAG_ATTACKING)
 ACT_WATER_SPIN = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_WATER_DIVE = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
@@ -243,6 +244,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.angleVel = 0
     e.swimSpinAngle = 0
 
+    e.GPcontinue = false
     e.GPtWP = false
     e.driWater = false
 
@@ -962,6 +964,9 @@ function act_roll(m)--ODYSSEY ROLL
     common_slide_action_with_jump(m, ACT_WALKING, ACT_LONG_JUMP, ACT_FREEFALL, CHAR_ANIM_FORWARD_SPINNING)
     local e = gMarioStateExtras[m.playerIndex]
     --apply_slope_accel(m)
+    if (m.input & INPUT_UNKNOWN_10) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_SHOCKWAVE_BOUNCE, 0);
+    end
     
     if (m.input & INPUT_A_PRESSED) ~= 0 then--Roll to Long Jump boost trick.
         local roLoTrick = (m.actionTimer < 8 and 25 or 0)
@@ -1245,10 +1250,11 @@ local function act_drill_down(m)--DRILLING DOWN
     local e = gMarioStateExtras[m.playerIndex]
     m.peakHeight = m.pos.y--No scream
 
-    if not e.fromGround then
-        m.forwardVel = math.min(m.forwardVel, 20)
+    if m.actionTimer == 0 then
+        set_mario_animation(m, CHAR_ANIM_TWIRL)
     end
 
+    m.forwardVel = math.min(m.forwardVel, 20)
     m.vel.y = math.max(m.vel.y - 8, -200)
     m.marioBodyState.handState = MARIO_HAND_OPEN
     set_mario_particle_flags(m, PARTICLE_BREATH | PARTICLE_DUST, 0)
@@ -1270,40 +1276,58 @@ local function act_drill_down(m)--DRILLING DOWN
     end
 
     if stepResult == AIR_STEP_LANDED then
-        if (m.floor.type == SURFACE_INSTANT_QUICKSAND) or (m.floor.type == SURFACE_INSTANT_MOVING_QUICKSAND) then
-            set_mario_action(m, ACT_QUICKSAND_DEATH, 0)
-            return
-        elseif m.floor.type == SURFACE_BURNING then
-            m.hurtCounter = 12
-            set_mario_action(m, ACT_LAVA_BOOST, 0)
-            return
-        elseif e.fromGround then
-            landing_step(m, CHAR_ANIM_TWIRL_LAND, ACT_IDLE)
-            if m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_TWIRL_LAND then
-                m.forwardVel = 0
-            end
-            -- m.actionState = 1
-            return
-        else
-            play_mario_heavy_landing_sound(m, SOUND_ACTION_TERRAIN_HEAVY_LANDING)
-            set_mario_particle_flags(m, (PARTICLE_MIST_CIRCLE | PARTICLE_HORIZONTAL_STAR), 0);
-            m.faceAngle.y = m.intendedYaw
-            m.squishTimer = 5
-            m.actionState = 1
-
-            if (m.playerIndex == 0) then 
-                set_camera_shake_from_hit(SHAKE_GROUND_POUND) 
-            end
-
-            e.fromGround = true
-        end
+        return set_mario_action(m, ACT_DRILL_DOWN_LAND, 0)
     else
         play_sound_with_freq_scale(SOUND_AIR_HEAVEHO_MOVE, m.marioObj.header.gfx.cameraToObject, 2)
     end
 
     e.spinAngle = e.spinAngle + (0x2500)
     m.marioObj.header.gfx.angle.y = e.spinAngle
+
     m.actionTimer = m.actionTimer + 1
+end
+
+local function act_drill_down_land(m)
+    local e = gMarioStateExtras[m.playerIndex]
+
+    if (m.input & INPUT_UNKNOWN_10) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_SHOCKWAVE_BOUNCE, 0);
+    end
+
+    if (m.input & INPUT_OFF_FLOOR) ~= 0 then
+        return set_mario_action(m, ACT_FREEFALL, 0);
+    end
+
+    if (m.input & INPUT_ABOVE_SLIDE) ~= 0 then
+        return set_mario_action(m, ACT_BUTT_SLIDE, 0);
+    end
+
+    if (m.floor.type == SURFACE_INSTANT_QUICKSAND) or (m.floor.type == SURFACE_INSTANT_MOVING_QUICKSAND) then
+        set_mario_action(m, ACT_QUICKSAND_DEATH, 0)
+        return
+    elseif m.floor.type == SURFACE_BURNING then
+        m.hurtCounter = 12
+        set_mario_action(m, ACT_LAVA_BOOST, 0)
+        return
+    end
+
+    if m.actionState ~= 1 then
+        m.forwardVel = 0
+        set_mario_animation(m, CHAR_ANIM_TWIRL)
+        play_mario_heavy_landing_sound(m, SOUND_ACTION_TERRAIN_HEAVY_LANDING)
+        set_mario_particle_flags(m, (PARTICLE_MIST_CIRCLE | PARTICLE_HORIZONTAL_STAR), 0);
+        m.faceAngle.y = m.intendedYaw
+        m.squishTimer = 5
+
+        if (m.playerIndex == 0) then 
+            set_camera_shake_from_hit(SHAKE_GROUND_POUND) 
+        end
+
+        m.actionState = 1
+        return
+    end
+
+    landing_step(m, CHAR_ANIM_TWIRL_LAND, ACT_IDLE)
 end
 
 local function act_water_ground_pound(m)--WATER GROUND POUND
@@ -1521,6 +1545,7 @@ local function act_air_hit_wall(m)
 end
 
 function act_ground_pound(m)
+    local e = gMarioStateExtras[m.playerIndex]
     local s = gPlayerSyncTable[m.playerIndex]
     local stepResult
     local yOffset
@@ -1539,7 +1564,7 @@ function act_ground_pound(m)
         return
     end
 
-    if (m.actionState == 0) then
+    if (m.actionState == 0) and not e.GPcontinue then
         if (m.actionTimer < 10) then
             yOffset = 20 - 2 * m.actionTimer
             if (m.pos.y + yOffset + 160.0 < m.ceilHeight) then
@@ -2240,7 +2265,7 @@ local function mario_update(m)
     end
 
     --GROUND POUND JUMP
-    if (m.action == ACT_GROUND_POUND_LAND or (e.fromGround and m.action == ACT_DRILL_DOWN)) and (m.input & INPUT_A_PRESSED) ~= 0 and m.floor.type ~= SURFACE_BURNING then
+    if (m.action == ACT_GROUND_POUND_LAND or m.action == ACT_DRILL_DOWN_LAND) and (m.input & INPUT_A_PRESSED) ~= 0 and m.floor.type ~= SURFACE_BURNING then
         if e.groundPoundCooldown <= 0 then
             set_mario_action(m, ACT_TRIPLE_JUMP, 0)
             m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
@@ -2344,12 +2369,22 @@ local function mario_update(m)
     end
 
     --DRILLING for Vanilla Twirling
-    if m.action == ACT_TWIRLING and (m.input & INPUT_Z_DOWN) ~= 0 then
+    if m.action == ACT_TWIRLING and (m.input & INPUT_Z_PRESSED) ~= 0 then
         set_mario_action(m, ACT_DRILL_DOWN, 0)
     end
 
+    --CONTINUING AN GROUND POUND
+    if m.action ~= ACT_TRIPLE_JUMP and (m.prevAction == ACT_GROUND_POUND_LAND or (m.prevAction == ACT_DRILL_DOWN_LAND and m.action == ACT_FREEFALL)) and (m.action & ACT_FLAG_AIR) ~= 0 and (m.input & INPUT_Z_DOWN) ~= 0 then
+        e.GPcontinue = true
+        set_mario_action(m, (m.prevAction == ACT_DRILL_DOWN_LAND and m.action == ACT_FREEFALL and ACT_DRILL_DOWN or ACT_GROUND_POUND), 0)
+    end
+
+    if (m.action == ACT_GROUND_POUND_LAND or m.action == ACT_DRILL_DOWN_LAND) and (m.input & INPUT_Z_DOWN) == 0 or (m.action & ACT_FLAG_AIR) == 0 then
+        e.GPcontinue = false
+    end
+
     --TRANSITION FROM DRILL/GROUND POUND TO ROLL        
-    if ((m.action == ACT_GROUND_POUND_LAND) or ((m.floorHeight == m.pos.y) and m.action == ACT_DRILL_DOWN)) and (m.input & INPUT_B_PRESSED) ~= 0 then
+    if (m.action == ACT_GROUND_POUND_LAND or m.action == ACT_DRILL_DOWN_LAND) and (m.input & INPUT_B_PRESSED) ~= 0 then
         m.squishTimer = 0
         e.didTwiAir = false
         e.didTwiJump = false
@@ -2446,7 +2481,10 @@ local function mario_update(m)
         --e.oxygenAmount = 0x500
         --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
         --spawn_sync_object(id_bhvChuckya, E_MODEL_CHUCKYA, m.pos.x, m.pos.y, m.pos.z - 500, nil)
-        --spawn_sync_object(id_bhvRecoveryHeart, E_MODEL_HEART, m.pos.x, m.pos.y, m.pos.z - 500, nil)
+        --for i = 0, 5 do
+            --spawn_sync_object(id_bhvBreakableBox, E_MODEL_BREAKABLE_BOX, m.pos.x, m.pos.y + i * 150, m.pos.z - 500, nil)
+        --end
+        --spawn_sync_object(id_bhvBreakableBox, E_MODEL_BREAKABLE_BOX, m.pos.x, m.pos.y + 30, m.pos.z - 300, nil)
         --set_water_level(0, m.pos.y + 12, true)
     end
 
@@ -2681,6 +2719,7 @@ hook_mario_action(ACT_AIR_DASH, { every_frame = act_air_dash}, INT_SLIDE_KICK)
 hook_mario_action(ACT_AIR_DASH_END, { every_frame = act_air_dash_end})
 hook_mario_action(ACT_TWIRL_N_PLACE, { every_frame = act_twirl_n_place, gravity = act_twirl_n_place_gravity })
 hook_mario_action(ACT_DRILL_DOWN, { every_frame = act_drill_down}, INT_GROUND_POUND)
+hook_mario_action(ACT_DRILL_DOWN_LAND, { every_frame = act_drill_down_land}, INT_GROUND_POUND)
 
 --NEW WATER ACTIONS
 
