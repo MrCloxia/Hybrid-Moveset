@@ -39,7 +39,7 @@ ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR |
 ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
---gLevelValues.entryLevel = LEVEL_PSS--LEVEL START DEBUG
+--gLevelValues.entryLevel = LEVEL_JRB--LEVEL START DEBUG
 
 -----------------------------------
 ------------- Extra ------------
@@ -160,7 +160,8 @@ local WATERHOLDACTIONS = {
 local convert_actions = {
     [ACT_AIR_HIT_WALL] = ACT_CUSTOM_AIR_HIT_WALL,
     [ACT_SLIDE_KICK] = ACT_ROLL,
-    [ACT_WATER_JUMP] = ACT_JUMP
+    [ACT_WATER_JUMP] = ACT_JUMP,
+    [ACT_SOFT_BONK] = ACT_FREEFALL
 }
 
 local gMarioStateExtras = {}
@@ -265,6 +266,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.oxygenAmount = MAX_OXYGEN
     e.lastOxygen = MAX_OXYGEN
     e.oxygenCooldown = 0
+    e.oxygenHeal = 0
     e.wasinToxic = false
 
     e.lastLives = m.numLives
@@ -1927,7 +1929,7 @@ local function act_emote_sit(m)--EMOTE SIT
     local step = perform_ground_step(m);
 
     --PANTING / LOW HEALTH VERSION
-    if m.health < 0x300 then
+    if m.health < 0x300 or (m.input & INPUT_IN_POISON_GAS) ~= 0 then
         if e.isCoughing then
             m.marioBodyState.eyeState = MARIO_EYES_CLOSED
         else
@@ -1939,9 +1941,29 @@ local function act_emote_sit(m)--EMOTE SIT
     if m.actionTimer == 0 then
         e.isLaying = false
         m.actionState = 0
+        if (m.input & INPUT_IN_POISON_GAS) ~= 0 then
+            s.painFelt = 2
+            e.coughMoments = {
+            [25] = true,
+            [35] = true,
+            [50] = true,
+            [58] = true,
+            [71] = true,
+            [80] = true
+            }
+        else
+            e.coughMoments = {
+            [225] = true,
+            [235] = true,
+            [250] = true,
+            [258] = true,
+            [271] = true,
+            [280] = true
+            }
+        end
     end
 
-    if s.coughTimer == 220 then
+    if s.coughTimer == 220 and (m.input & INPUT_IN_POISON_GAS) == 0 then
         s.painFelt = math.random(1, 2)
     end
 
@@ -1959,9 +1981,9 @@ local function act_emote_sit(m)--EMOTE SIT
         end
     end
 
-    if (s.coughTimer == 270 and s.painFelt == 1) or (s.coughTimer == 300 and s.painFelt == 2) then
+    if (s.coughTimer == 270 and s.painFelt == 1) or (s.coughTimer == ((m.input & INPUT_IN_POISON_GAS) ~= 0 and 100 or 300) and s.painFelt == 2) then
         e.isCoughing = false
-    elseif s.coughTimer == 800 then
+    elseif s.coughTimer == ((m.input & INPUT_IN_POISON_GAS) ~= 0 and 130 or 800) then
         s.coughTimer = 0
     end
 
@@ -2418,10 +2440,11 @@ local function mario_update(m)
         local terrainIsSnow = (m.area.terrainType & TERRAIN_MASK) == TERRAIN_SNOW
         local isMetal = (m.flags & MARIO_METAL_CAP) ~= 0
         local isToxic = (m.input & INPUT_IN_POISON_GAS) ~= 0
+        local gotStar = (m.action == ACT_STAR_DANCE_WATER or m.action == ACT_STAR_DANCE_EXIT or m.action == ACT_STAR_DANCE_NO_EXIT)
         local toxicFactor = e.wasinToxic and 2 or 0
 
         if isToxic then
-            e.oxygenCooldown = (isMetal and 0 or 80)
+            e.oxygenCooldown = ((isMetal or gotStar) and 0 or 80)
             e.wasinToxic = true
         elseif (m.action & ACT_FLAG_SWIMMING) ~= 0 then
             e.wasinToxic = false
@@ -2435,7 +2458,7 @@ local function mario_update(m)
             if m.pos.y <= m.waterLevel and not terrainIsSnow and not isMetal and (WATERACTIONS[m.action] or m.action == ACT_WATER_GROUND_POUND or m.action == ACT_WATER_GROUND_POUND_LAND or m.action == ACT_WATER_DIVE or m.action == ACT_WATER_POUND_JUMP or m.action == ACT_WATER_SPIN or m.action == ACT_DOLPHIN_DIVE or WATERHOLDACTIONS[m.action]) then--Other actions outside of WATERACTIONS also allow you to heal back.
                 m.health = m.health - 0x1A
             end
-        else
+        elseif not gotStar then
             m.health = m.health + (isToxic and 4 or 1)
             e.oxygenAmount = e.oxygenAmount - (terrainIsSnow and 5 + toxicFactor or 2 + toxicFactor)
         end
@@ -2448,19 +2471,28 @@ local function mario_update(m)
 
         if e.oxygenAmount > MAX_OXYGEN then
             e.oxygenAmount = MAX_OXYGEN
-        elseif e.oxygenAmount <= 0x099 and not isMetal then--About to drown or die from toxic gas.
+        elseif e.oxygenAmount <= 0x099 and not isMetal and not gotStar then--About to drown or die from toxic gas.
             m.health = m.health - (isToxic and 0x13 or 0x09)
             e.oxygenAmount = 0x099
         end
+    end
+
+    if m.action == ACT_STANDING_DEATH and e.oxygenCooldown ~= 0 then
+        return set_mario_action(m, ACT_SUFFOCATION, 0)
     end
 
     if e.oxygenCooldown > 0 then
         e.oxygenCooldown = e.oxygenCooldown - 1  
     end
 
+    if e.oxygenHeal > 0 then
+        e.oxygenAmount = math.min(e.oxygenAmount + 0x20, MAX_OXYGEN)
+        e.oxygenHeal = e.oxygenHeal - 1
+    end
+
     if gLevelValues.mushroom1UpHeal ~= 0 then
         if m.numLives > e.lastLives then
-            e.oxygenAmount = MAX_OXYGEN
+            e.oxygenHeal = 80
         end
         e.lastLives = m.numLives
     end
@@ -2478,13 +2510,10 @@ local function mario_update(m)
     --DEBUG FUNCTION
     if (m.controller.buttonPressed & Y_BUTTON) ~= 0 then
         --m.health = 0x200
-        --e.oxygenAmount = 0x500
+        --e.oxygenAmount = 0x100
         --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
         --spawn_sync_object(id_bhvChuckya, E_MODEL_CHUCKYA, m.pos.x, m.pos.y, m.pos.z - 500, nil)
-        --for i = 0, 5 do
-            --spawn_sync_object(id_bhvBreakableBox, E_MODEL_BREAKABLE_BOX, m.pos.x, m.pos.y + i * 150, m.pos.z - 500, nil)
-        --end
-        --spawn_sync_object(id_bhvBreakableBox, E_MODEL_BREAKABLE_BOX, m.pos.x, m.pos.y + 30, m.pos.z - 300, nil)
+        --spawn_sync_object(id_bhvBlueCoinSliding, E_MODEL_BLUE_COIN, m.pos.x, m.pos.y + 30, m.pos.z - 300, nil)
         --set_water_level(0, m.pos.y + 12, true)
     end
 
@@ -2686,14 +2715,14 @@ hook_event(HOOK_ON_INTERACT, function (m,o,type,value)
     local s = gPlayerSyncTable[m.playerIndex]
     if s.allowOxygen then
         if type == INTERACT_COIN then
-            e.oxygenAmount = math.min(e.oxygenAmount + 0x100, MAX_OXYGEN)
+            e.oxygenHeal = o.oDamageOrCoinValue * 10
         elseif type == INTERACT_WATER_RING then
             m.healCounter = m.healCounter - 4 * o.oDamageOrCoinValue;
-            e.oxygenAmount = e.oxygenAmount + 0x880/2
+            e.oxygenHeal = o.oDamageOrCoinValue * 20
         elseif type == INTERACT_STAR_OR_KEY then
             for mod in pairs(gActiveMods) do
                 if gActiveMods[mod].name == "Star Heal \\#0FFF3F\\1.0" then
-                    e.oxygenAmount = MAX_OXYGEN
+                    e.oxygenHeal = 80
                 end
             end
         end
