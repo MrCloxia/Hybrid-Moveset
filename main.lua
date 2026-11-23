@@ -46,7 +46,6 @@ ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 ----------------------------------
 
 local ANGLE_QUEUE_SIZE = 9
-local SPIN_TIMER_SUCCESSFUL_INPUT = 4
 local MAX_OXYGEN = 0x900
 
 local SPINACTIONS = {
@@ -180,6 +179,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     s.allowWhirl = true
     s.whirlStrength = 10
     s.allowOxygen = true
+    s.allowSTJ = false
 
     e.hObjJumps = 0
     e.hObjPressed = false
@@ -217,6 +217,10 @@ for i = 0, (MAX_PLAYERS - 1) do
 
     e.savedWallSlideHeight = 0
     e.savedWallSlide = false
+
+    e.fromSTJ = false
+    e.touchGround = 0
+    e.swJumpWin = 0
 
     e.animFrame = 0
     e.groundPoundCooldown = 0
@@ -321,6 +325,12 @@ local allowOxygen_cmd = function (ind, value)
     gPlayerSyncTable[0].allowOxygen = value
 end
 
+local allowSTJ_cmd = function(ind, value)
+    local m = gMarioStates[0]
+    m.specialTripleJump = value
+    gPlayerSyncTable[0].allowSTJ = value
+end
+
 local function random_float(min, max)
     return min + math.random() * (max - min)
 end
@@ -421,15 +431,6 @@ local function mario_update_spin_input(m)
 
         e.angleDeltaQueue[0] = thisFrameDelta
         angleOverFrames = angleOverFrames + thisFrameDelta
-
-        -- if angleOverFrames >= 0xA000 then
-        --     e.spinBufferTimer = SPIN_TIMER_SUCCESSFUL_INPUT
-        -- end
-
-        -- if e.spinBufferTimer > 0 then
-        --     e.spinInput = 1
-        --     e.spinBufferTimer = e.spinBufferTimer - 1
-        -- end
     else
         e.spinDirection = 0
         e.spinBufferTimer = 0
@@ -1523,25 +1524,43 @@ local function act_air_hit_wall(m)
         return
     end
 
-    m.actionTimer = m.actionTimer + 1
-    if m.actionTimer <= 1 and (m.input & INPUT_A_PRESSED) ~= 0 then
-        m.vel.y = 52.0
-        m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
-        if e.fromWall then
-            e.twirlWalls = e.twirlWalls - 1
+    if e.fromSTJ then
+        if e.swJumpWin > 0 then
+            e.stored_wall_speed = m.forwardVel
+            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
+            mario_set_forward_vel(m, e.stored_wall_speed)
+            return set_mario_action(m, ACT_WALL_KICK_AIR, 0)
+        else
+            stop_sounds_from_source(m.marioObj.header.gfx.cameraToObject)
+            mario_bonk_reflection(m, false)
+            m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
+            play_mario_sound(m, 0, CHAR_SOUND_UH)
+            return set_mario_action(m, ACT_SOFT_BONK, 0)
         end
-        return set_mario_action(m, ACT_WALL_KICK_AIR, 0)
-    elseif m.forwardVel >= 38.0 then
-        if m.vel.y > 0.0 then
-            m.vel.y = 0.0
-        end
-        m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
-        m.particleFlags = m.particleFlags | PARTICLE_VERTICAL_STAR
-        return set_mario_action(m, ACT_WALL_SLIDE, 0)
-    else
-        m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
-        return set_mario_action(m, ACT_WALL_SLIDE, 0)
     end
+
+    if not e.fromSTJ then
+        if m.actionTimer <= 1 and (m.input & INPUT_A_PRESSED) ~= 0 then
+            m.vel.y = 52.0
+            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
+            if e.fromWall then
+                e.twirlWalls = e.twirlWalls - 1
+            end
+            return set_mario_action(m, ACT_WALL_KICK_AIR, 0)
+        elseif m.forwardVel >= 38.0 then
+            if m.vel.y > 0.0 then
+                m.vel.y = 0.0
+            end
+            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
+            m.particleFlags = m.particleFlags | PARTICLE_VERTICAL_STAR
+            return set_mario_action(m, ACT_WALL_SLIDE, 0)
+        else
+            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
+            return set_mario_action(m, ACT_WALL_SLIDE, 0)
+        end
+    end
+    
+    m.actionTimer = m.actionTimer + 1
 
     return set_mario_animation(m, CHAR_ANIM_START_WALLKICK)
 end
@@ -1678,6 +1697,125 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
 
     m.actionTimer = m.actionTimer + 1
 end
+
+function act_wall_kick_air(m)
+    local e = gMarioStateExtras[m.playerIndex]
+
+    if m.actionTimer == 0 then
+        swjVoice = {CHAR_SOUND_PUNCH_HOO, CHAR_SOUND_WAH2}
+        selVoice = math.random(1, #swjVoice)
+        play_character_sound_offset(m, (e.fromSTJ and swjVoice[selVoice] or CHAR_SOUND_YAH_WAH_HOO), (e.fromSTJ and 0 or math.random(0, 2) << 16))
+        if e.fromSTJ then
+            m.vel.y = m.vel.y + 10
+        end
+    end
+
+    if (m.input & INPUT_B_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_DIVE, 0);
+    end
+
+    if (m.input & INPUT_Z_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_GROUND_POUND, 0);
+    end
+
+    if e.fromSTJ then
+        if (m.input & INPUT_A_PRESSED) ~= 0 then
+            e.swJumpWin = 10
+        elseif e.swJumpWin > 0 then
+            e.swJumpWin = e.swJumpWin - 1
+        end
+
+        m.peakHeight = m.pos.y--No scream
+        play_flip_sounds(m, 2, 3, 17);
+        set_mario_particle_flags(m, (m.actionTimer == 0 and (PARTICLE_VERTICAL_STAR | PARTICLE_DUST) or 0) | PARTICLE_SPARKLES, 0)
+        mario_set_forward_vel(m, e.stored_wall_speed)
+        local yawDiff = ((m.intendedYaw - m.faceAngle.y + 0x8000) & 0xFFFF) - 0x8000
+        m.faceAngle.y = m.faceAngle.y + math.max(-0x350, math.min(yawDiff / 3, 0x350))
+    end
+    common_air_action_step(m, (e.fromSTJ and ACT_SPECIAL_TRIPLE_JUMP or ACT_JUMP_LAND), (e.fromSTJ and CHAR_ANIM_FORWARD_SPINNING or CHAR_ANIM_SLIDEJUMP), (e.fromSTJ and 0 or AIR_STEP_CHECK_LEDGE_GRAB));
+
+    m.actionTimer = m.actionTimer + 1
+    return
+end
+
+function act_special_triple_jump(m)--REWORK SPECIAL TRIPLE JUMP
+    local e = gMarioStateExtras[m.playerIndex]
+    local stepResult = perform_air_step(m, 0)
+    m.peakHeight = m.pos.y--No scream
+
+    if m.actionTimer == 0 then
+        set_character_animation(m, CHAR_ANIM_FORWARD_SPINNING)
+        if not e.fromSTJ then
+            e.touchGround = 0
+            if e.twirlSFX ~= 1 then
+                play_character_sound_offset(m, CHAR_SOUND_YAHOO_WAHA_YIPPEE, math.random(0, 4) << 16)
+            end
+        end
+        e.twirlSFX = 0
+        e.fromSTJ = false
+    end
+
+    if (m.input & INPUT_B_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_DIVE, 0);
+    end
+
+    if (m.input & INPUT_Z_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_GROUND_POUND, 0);
+    end
+
+    update_air_without_turn(m);
+
+    if (m.input & INPUT_A_PRESSED) ~= 0 then
+        e.swJumpWin = 10
+    elseif e.swJumpWin > 0 then
+        e.swJumpWin = e.swJumpWin - 1
+    end
+
+    if stepResult == AIR_STEP_LANDED then
+        m.vel.y = 42
+        e.touchGround = e.touchGround + 1
+        play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
+
+        if e.touchGround == 2 and m.vel.y >= 0 then
+            set_mario_action(m, ACT_TRIPLE_JUMP_LAND, 0)
+        end
+    elseif stepResult == AIR_STEP_HIT_WALL then--SPECIAL TRIPLE JUMP WALL JUMP.
+        if e.swJumpWin > 0 and e.touchGround < 1 and m.prevAction ~= ACT_WATER_POUND_JUMP then
+            swjVoice = {CHAR_SOUND_PUNCH_HOO, CHAR_SOUND_WAH2}
+            selVoice = math.random(1, #swjVoice)
+            m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
+            play_mario_sound(m, SOUND_ACTION_BONK, swjVoice[selVoice])
+            e.stored_wall_speed = m.forwardVel * 2
+            e.fromSTJ = true
+            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
+            set_mario_particle_flags(m, PARTICLE_VERTICAL_STAR | PARTICLE_DUST, 0)
+            set_mario_action(m, ACT_WALL_KICK_AIR, 0)
+        else
+            mario_bonk_reflection(m, false)
+        end
+    end
+
+    if e.touchGround == 0 then
+        play_flip_sounds(m, 2, 3, 17)
+    elseif e.touchGround == 1 then
+        if m.vel.y > 0 then
+            play_flip_sounds(m, 2, 3, 17)
+        else
+            set_character_animation(m, CHAR_ANIM_TRIPLE_JUMP)
+            if e.twirlSFX == 0 then
+                set_anim_to_frame(m, 10)
+                e.twirlSFX = 2
+            end
+        end
+    end
+
+    local yawDiff = ((m.intendedYaw - m.faceAngle.y + 0x8000) & 0xFFFF) - 0x8000
+    m.faceAngle.y = m.faceAngle.y + math.max(-0x300, math.min(yawDiff / 3, 0x300))
+    set_mario_particle_flags(m, (m.prevAction ~= ACT_WATER_POUND_JUMP and PARTICLE_SPARKLES or 0) | (m.vel.y > 0 and PARTICLE_DUST or 0), 0)
+
+    m.actionTimer = m.actionTimer + 1
+end
+
 
 function act_grabbed(m)--ESCAPE OUT OF AN GRAB
     local e = gMarioStateExtras[m.playerIndex]
@@ -2114,7 +2252,8 @@ local function mario_on_set_action(m)
         e.didTwiAir = false
         e.didTwiJump = false
         e.inTwiAir = false
-        e.twirlSFX = 0
+        e.fromSTJ = false
+        e.fromGPJ = false
 
         e.twirlWalls = 2
         e.fromWall = false
@@ -2167,6 +2306,7 @@ local function before_mario_update(m)
         return 
     end
     local e = gMarioStateExtras[m.playerIndex]
+
     if e.fakeSaved == true then
         if m.action == e.fakeWroteAction and m.prevAction == e.fakeSavedPrevAction and m.actionTimer == e.fakeSavedActionTimer then
             m.action = e.fakeSavedAction
@@ -2321,7 +2461,7 @@ local function mario_update(m)
     end
 
     --AIR DASH
-    if AIRDASHACTIONS[m.action] and not e.didAirDash and (m.input & INPUT_A_PRESSED) ~= 0 and s.allowAiDa then
+    if AIRDASHACTIONS[m.action] and not e.didAirDash and (m.input & INPUT_A_PRESSED) ~= 0 and not e.fromSTJ and s.allowAiDa then
         -- if m.forwardVel < 35 and m.vel.y <= 10 then --Air kick function when too slow to do the dash.
         --     m.faceAngle.y = m.intendedYaw
         --     mario_set_forward_vel(m, m.forwardVel * 1.35)
@@ -2685,6 +2825,7 @@ hook_mod_menu_text("\\#ffdd00\\==-[\\#de1212\\ General \\#3c99d6\\Settings \\#ff
 hook_mod_menu_checkbox("Enable Moveset:", gPlayerSyncTable[0].usingHybird, hybird_cmd)
 hook_mod_menu_checkbox("Enable Fall Damage:", gPlayerSyncTable[0].allowfaDa, allowFall_cmd)
 hook_mod_menu_checkbox("Enable Modern Oxygen System:", gPlayerSyncTable[0].allowOxygen, allowOxygen_cmd)
+hook_mod_menu_checkbox("Enable Special Triple Jump:", gPlayerSyncTable[0].allowSTJ, allowSTJ_cmd)
 hook_mod_menu_checkbox("Swap Water Punch & Spin:", gPlayerSyncTable[0].swapWaterSet, swapWabind_cmd)
 hook_mod_menu_text("\\#ffdd00\\==-[\\#9cf5ff\\ Air Dash \\#ffa600\\]-==")
 hook_mod_menu_checkbox("Enable Air Dash:", gPlayerSyncTable[0].allowAiDa, allowAirDash_cmd)
@@ -2707,6 +2848,10 @@ hook_event(HOOK_ON_PLAY_SOUND, function (soundID, pos)
 
     if s.allowOxygen and (m.pos.y >= (m.waterLevel - 140) or e.oxygenAmount >= 0x300) and not e.wasinToxic and soundID == SOUND_MOVING_ALMOST_DROWNING then
         return NO_SOUND
+    end
+
+    if soundID == SOUND_GENERAL_BOING2 and (m.prevAction == ACT_GROUND_POUND_LAND or m.prevAction == ACT_DRILL_DOWN_LAND) then
+        e.twirlSFX = 1
     end
 end)
 hook_behavior(id_bhvRecoveryHeart, OBJ_LIST_LEVEL, false, nil, bhv_recovery_heart_loop)
@@ -2733,6 +2878,8 @@ end)
 
 hook_mario_action(ACT_GROUND_POUND, { every_frame = act_ground_pound }, INT_GROUND_POUND)
 hook_mario_action(ACT_DIVE_SLIDE, { every_frame = act_dive_slide})
+hook_mario_action(ACT_WALL_KICK_AIR, { every_frame = act_wall_kick_air })
+hook_mario_action(ACT_SPECIAL_TRIPLE_JUMP, { every_frame = act_special_triple_jump })
 hook_mario_action(ACT_GRABBED, { every_frame = act_grabbed })
 hook_mario_action(ACT_GRABBED_JUMP, { every_frame = act_grabbed_jump })
 
