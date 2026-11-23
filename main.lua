@@ -1289,13 +1289,14 @@ end
 
 local function act_drill_down_land(m)
     local e = gMarioStateExtras[m.playerIndex]
+    local zHeld = (m.controller.buttonDown & Z_TRIG) ~= 0
+
+    if (m.input & INPUT_OFF_FLOOR) ~= 0 then
+        return set_mario_action(m, zHeld and ACT_DRILL_DOWN or ACT_FREEFALL, 0);
+    end
 
     if (m.input & INPUT_UNKNOWN_10) ~= 0 then
         return drop_and_set_mario_action(m, ACT_SHOCKWAVE_BOUNCE, 0);
-    end
-
-    if (m.input & INPUT_OFF_FLOOR) ~= 0 then
-        return set_mario_action(m, ACT_FREEFALL, 0);
     end
 
     if (m.input & INPUT_ABOVE_SLIDE) ~= 0 then
@@ -1324,7 +1325,6 @@ local function act_drill_down_land(m)
         end
 
         m.actionState = 1
-        return
     end
 
     landing_step(m, CHAR_ANIM_TWIRL_LAND, ACT_IDLE)
@@ -2374,12 +2374,12 @@ local function mario_update(m)
     end
 
     --CONTINUING AN GROUND POUND
-    if m.action ~= ACT_TRIPLE_JUMP and (m.prevAction == ACT_GROUND_POUND_LAND or (m.prevAction == ACT_DRILL_DOWN_LAND and m.action == ACT_FREEFALL)) and (m.action & ACT_FLAG_AIR) ~= 0 and (m.input & INPUT_Z_DOWN) ~= 0 then
+    if m.action ~= ACT_TRIPLE_JUMP and m.prevAction == ACT_GROUND_POUND_LAND and (m.action & ACT_FLAG_AIR) ~= 0 and (m.input & INPUT_Z_DOWN) ~= 0 then
         e.GPcontinue = true
-        set_mario_action(m, (m.prevAction == ACT_DRILL_DOWN_LAND and m.action == ACT_FREEFALL and ACT_DRILL_DOWN or ACT_GROUND_POUND), 0)
+        set_mario_action(m, ACT_GROUND_POUND, 0)
     end
 
-    if (m.action == ACT_GROUND_POUND_LAND or m.action == ACT_DRILL_DOWN_LAND) and (m.input & INPUT_Z_DOWN) == 0 or (m.action & ACT_FLAG_AIR) == 0 then
+    if m.action == ACT_GROUND_POUND_LAND and (m.input & INPUT_Z_DOWN) == 0 or (m.action & ACT_FLAG_AIR) == 0 then
         e.GPcontinue = false
     end
 
