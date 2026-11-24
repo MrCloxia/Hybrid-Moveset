@@ -74,7 +74,6 @@ local AIRDASHACTIONS = {
     [ACT_JUMP] = true,
     [ACT_DOUBLE_JUMP] = true,
     [ACT_TRIPLE_JUMP] = true,
-    [ACT_SPECIAL_TRIPLE_JUMP] = true,
     [ACT_LONG_JUMP] = true,
     [ACT_DIVE] = true,
     [ACT_FREEFALL] = true,
@@ -220,7 +219,8 @@ for i = 0, (MAX_PLAYERS - 1) do
 
     e.fromSTJ = false
     e.touchGround = 0
-    e.swJumpWin = 0
+    e.SRollTimer = 0
+    e.fromWater = false
 
     e.animFrame = 0
     e.groundPoundCooldown = 0
@@ -1465,15 +1465,31 @@ local function act_water_ground_pound_land(m)--WATER GROUND POUND LAND
     m.actionTimer = m.actionTimer + 1
 end
 
-function act_wall_slide(m)--WALL SLIDE
-    if not m or m.playerIndex == nil or not gMarioStateExtras[m.playerIndex] then return 0 end
+local function act_wall_slide(m)--WALL SLIDE
     local e = gMarioStateExtras[m.playerIndex]
+    local stepResult = perform_air_step(m, 0)
     e.savedWallSlideHeight = m.pos.y
     e.savedWallSlide = true
 
     if m.actionTimer == 0 then
         e.animFrame = 0
-        e.stored_wall_speed = m.forwardVel
+        e.stored_wall_speed = (e.fromSTJ and 70 or m.forwardVel)
+    end
+
+    if (not m.wall or e.fromSTJ) and m.actionTimer > (e.fromSTJ and 5 or 2) then
+        if e.fromSTJ then
+            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
+            play_mario_sound(m, SOUND_ACTION_BONK, CHAR_SOUND_UH)
+        end
+        mario_set_forward_vel(m, (e.fromSTJ and -20 or 0))
+        return set_mario_action(m, ACT_FREEFALL, 0)
+    end
+
+    if stepResult == AIR_STEP_LANDED then
+        mario_set_forward_vel(m, 0.0)
+        if check_fall_damage_or_get_stuck(m, ACT_HARD_BACKWARD_GROUND_KB) == 0 then
+            return set_mario_action(m, ACT_FREEFALL_LAND, 0)
+        end
     end
 
     if (m.input & INPUT_A_PRESSED) ~= 0 then
@@ -1485,27 +1501,17 @@ function act_wall_slide(m)--WALL SLIDE
         return set_mario_action(m, ACT_WALL_KICK_AIR, 0)
     end
 
-    e.stored_wall_speed = math.max(-1,e.stored_wall_speed - 5)
+    e.stored_wall_speed = math.max(-1, e.stored_wall_speed - 5)
+    set_mario_particle_flags(m, PARTICLE_DUST, 0)
     mario_set_forward_vel(m, -1)
-    m.particleFlags = m.particleFlags | PARTICLE_DUST
 
     play_sound(SOUND_MOVING_TERRAIN_SLIDE, m.marioObj.header.gfx.cameraToObject)
-    set_mario_animation(m, CHAR_ANIM_START_WALLKICK)
-
-    if perform_air_step(m, 0) == AIR_STEP_LANDED then
-        mario_set_forward_vel(m, 0.0)
-        if check_fall_damage_or_get_stuck(m, ACT_HARD_BACKWARD_GROUND_KB) == 0 then
-            return set_mario_action(m, ACT_FREEFALL_LAND, 0)
-        end
+    set_mario_animation(m, (e.fromSTJ and CHAR_ANIM_SLIDE_KICK or CHAR_ANIM_START_WALLKICK))
+    if e.fromSTJ then
+        m.marioObj.header.gfx.angle.y = limit_angle(m.faceAngle.y + 0x8000)
     end
 
     m.actionTimer = m.actionTimer + 1
-    if not m.wall and m.actionTimer > 2 then
-        mario_set_forward_vel(m, 0.0)
-        return set_mario_action(m, ACT_FREEFALL, 0)
-    end
-
-    return 0
 end
 
 local function act_wall_slide_gravity(m)
@@ -1524,40 +1530,23 @@ local function act_air_hit_wall(m)
         return
     end
 
-    if e.fromSTJ then
-        if e.swJumpWin > 0 then
-            e.stored_wall_speed = m.forwardVel
-            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
-            mario_set_forward_vel(m, e.stored_wall_speed)
-            return set_mario_action(m, ACT_WALL_KICK_AIR, 0)
-        else
-            stop_sounds_from_source(m.marioObj.header.gfx.cameraToObject)
-            mario_bonk_reflection(m, false)
-            m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
-            play_mario_sound(m, 0, CHAR_SOUND_UH)
-            return set_mario_action(m, ACT_SOFT_BONK, 0)
+    if m.actionTimer <= 1 and (m.input & INPUT_A_PRESSED) ~= 0 then
+        m.vel.y = 52.0
+        m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
+        if e.fromWall then
+            e.twirlWalls = e.twirlWalls - 1
         end
-    end
-
-    if not e.fromSTJ then
-        if m.actionTimer <= 1 and (m.input & INPUT_A_PRESSED) ~= 0 then
-            m.vel.y = 52.0
-            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
-            if e.fromWall then
-                e.twirlWalls = e.twirlWalls - 1
-            end
-            return set_mario_action(m, ACT_WALL_KICK_AIR, 0)
-        elseif m.forwardVel >= 38.0 then
-            if m.vel.y > 0.0 then
-                m.vel.y = 0.0
-            end
-            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
-            m.particleFlags = m.particleFlags | PARTICLE_VERTICAL_STAR
-            return set_mario_action(m, ACT_WALL_SLIDE, 0)
-        else
-            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
-            return set_mario_action(m, ACT_WALL_SLIDE, 0)
+        return set_mario_action(m, ACT_WALL_KICK_AIR, 0)
+    elseif m.forwardVel >= 38.0 then
+        if m.vel.y > 0.0 then
+            m.vel.y = 0.0
         end
+        m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
+        m.particleFlags = m.particleFlags | PARTICLE_VERTICAL_STAR
+        return set_mario_action(m, ACT_WALL_SLIDE, 0)
+    else
+        m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
+        return set_mario_action(m, ACT_WALL_SLIDE, 0)
     end
     
     m.actionTimer = m.actionTimer + 1
@@ -1702,9 +1691,11 @@ function act_wall_kick_air(m)
     local e = gMarioStateExtras[m.playerIndex]
 
     if m.actionTimer == 0 then
+        m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
         swjVoice = {CHAR_SOUND_PUNCH_HOO, CHAR_SOUND_WAH2}
         selVoice = math.random(1, #swjVoice)
         play_character_sound_offset(m, (e.fromSTJ and swjVoice[selVoice] or CHAR_SOUND_YAH_WAH_HOO), (e.fromSTJ and 0 or math.random(0, 2) << 16))
+        set_mario_particle_flags(m, (e.fromSTJ and PARTICLE_VERTICAL_STAR or 0) | PARTICLE_DUST, 0)
         if e.fromSTJ then
             m.vel.y = m.vel.y + 10
         end
@@ -1719,19 +1710,13 @@ function act_wall_kick_air(m)
     end
 
     if e.fromSTJ then
-        if (m.input & INPUT_A_PRESSED) ~= 0 then
-            e.swJumpWin = 10
-        elseif e.swJumpWin > 0 then
-            e.swJumpWin = e.swJumpWin - 1
-        end
-
         m.peakHeight = m.pos.y--No scream
         play_flip_sounds(m, 2, 3, 17);
         set_mario_particle_flags(m, (m.actionTimer == 0 and (PARTICLE_VERTICAL_STAR | PARTICLE_DUST) or 0) | PARTICLE_SPARKLES, 0)
-        mario_set_forward_vel(m, e.stored_wall_speed)
         local yawDiff = ((m.intendedYaw - m.faceAngle.y + 0x8000) & 0xFFFF) - 0x8000
         m.faceAngle.y = m.faceAngle.y + math.max(-0x350, math.min(yawDiff / 3, 0x350))
     end
+
     common_air_action_step(m, (e.fromSTJ and ACT_SPECIAL_TRIPLE_JUMP or ACT_JUMP_LAND), (e.fromSTJ and CHAR_ANIM_FORWARD_SPINNING or CHAR_ANIM_SLIDEJUMP), (e.fromSTJ and 0 or AIR_STEP_CHECK_LEDGE_GRAB));
 
     m.actionTimer = m.actionTimer + 1
@@ -1745,14 +1730,18 @@ function act_special_triple_jump(m)--REWORK SPECIAL TRIPLE JUMP
 
     if m.actionTimer == 0 then
         set_character_animation(m, CHAR_ANIM_FORWARD_SPINNING)
+        e.fromWater = (m.prevAction == ACT_WATER_POUND_JUMP and true or false)
         if not e.fromSTJ then
             e.touchGround = 0
             if e.twirlSFX ~= 1 then
                 play_character_sound_offset(m, CHAR_SOUND_YAHOO_WAHA_YIPPEE, math.random(0, 4) << 16)
             end
         end
+        e.airTime = 0
         e.twirlSFX = 0
         e.fromSTJ = false
+    else
+        e.airTime = e.airTime + 1
     end
 
     if (m.input & INPUT_B_PRESSED) ~= 0 then
@@ -1763,55 +1752,64 @@ function act_special_triple_jump(m)--REWORK SPECIAL TRIPLE JUMP
         return set_mario_action(m, ACT_GROUND_POUND, 0);
     end
 
+    if (m.input & INPUT_A_DOWN) ~= 0 and not e.fromWater and m.marioObj.header.gfx.animInfo.animID ~= CHAR_ANIM_TRIPLE_JUMP then
+        e.SRollTimer = 30
+    end
+
     update_air_without_turn(m);
 
-    if (m.input & INPUT_A_PRESSED) ~= 0 then
-        e.swJumpWin = 10
-    elseif e.swJumpWin > 0 then
-        e.swJumpWin = e.swJumpWin - 1
+    if stepResult == AIR_STEP_NONE and e.airTime < 4 then
+        storedSpeed = m.vel.y
     end
 
     if stepResult == AIR_STEP_LANDED then
-        m.vel.y = 42
-        e.touchGround = e.touchGround + 1
-        play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
+        if (m.floor.type == SURFACE_INSTANT_QUICKSAND) or (m.floor.type == SURFACE_INSTANT_MOVING_QUICKSAND) then
+            set_mario_action(m, ACT_QUICKSAND_DEATH, 0)
+            return
+        elseif m.floor.type == SURFACE_BURNING then
+            m.hurtCounter = 12
+            set_mario_action(m, ACT_LAVA_BOOST, 0)
+            return
+        end
 
-        if e.touchGround == 2 and m.vel.y >= 0 then
+        m.vel.y = 42 + (e.SRollTimer > 0 and 24 or 0)
+        if e.touchGround < 2 then
+            e.touchGround = e.touchGround + 1
+        end
+
+        play_mario_landing_sound(m, SOUND_ACTION_TERRAIN_LANDING)
+        e.airTime = 0
+        if e.SRollTimer ~= 0 then
+            play_sound((storedSpeed > 20 and SOUND_GENERAL_BOING2 or SOUND_GENERAL_BOING1), m.marioObj.header.gfx.cameraToObject)
+        end
+
+        if m.vel.y >= 0 and e.SRollTimer == 0 then
             set_mario_action(m, ACT_TRIPLE_JUMP_LAND, 0)
         end
-    elseif stepResult == AIR_STEP_HIT_WALL then--SPECIAL TRIPLE JUMP WALL JUMP.
-        if e.swJumpWin > 0 and e.touchGround < 1 and m.prevAction ~= ACT_WATER_POUND_JUMP then
-            swjVoice = {CHAR_SOUND_PUNCH_HOO, CHAR_SOUND_WAH2}
-            selVoice = math.random(1, #swjVoice)
-            m.flags = m.flags & ~MARIO_MARIO_SOUND_PLAYED
-            play_mario_sound(m, SOUND_ACTION_BONK, swjVoice[selVoice])
-            e.stored_wall_speed = m.forwardVel * 2
+    end
+    
+    if stepResult == AIR_STEP_HIT_WALL then--SPECIAL TRIPLE JUMP WALL JUMP.
+        if e.touchGround < 1 and not e.fromWater then
             e.fromSTJ = true
-            m.faceAngle.y = limit_angle(m.faceAngle.y + 0x8000)
-            set_mario_particle_flags(m, PARTICLE_VERTICAL_STAR | PARTICLE_DUST, 0)
-            set_mario_action(m, ACT_WALL_KICK_AIR, 0)
+            return set_mario_action(m, ACT_AIR_HIT_WALL, 0)
         else
             mario_bonk_reflection(m, false)
         end
     end
 
-    if e.touchGround == 0 then
+    if m.vel.y > 0 or e.SRollTimer > 0 then
         play_flip_sounds(m, 2, 3, 17)
-    elseif e.touchGround == 1 then
-        if m.vel.y > 0 then
-            play_flip_sounds(m, 2, 3, 17)
-        else
-            set_character_animation(m, CHAR_ANIM_TRIPLE_JUMP)
-            if e.twirlSFX == 0 then
-                set_anim_to_frame(m, 10)
-                e.twirlSFX = 2
-            end
+    else
+        set_character_animation(m, CHAR_ANIM_TRIPLE_JUMP)
+        if e.twirlSFX == 0 then
+            set_anim_to_frame(m, 10)
+            e.twirlSFX = 2
         end
     end
 
     local yawDiff = ((m.intendedYaw - m.faceAngle.y + 0x8000) & 0xFFFF) - 0x8000
     m.faceAngle.y = m.faceAngle.y + math.max(-0x300, math.min(yawDiff / 3, 0x300))
-    set_mario_particle_flags(m, (m.prevAction ~= ACT_WATER_POUND_JUMP and PARTICLE_SPARKLES or 0) | (m.vel.y > 0 and PARTICLE_DUST or 0), 0)
+    set_mario_particle_flags(m, (not e.fromWater and PARTICLE_SPARKLES or 0) | (m.vel.y > 0 and PARTICLE_DUST or 0), 0)
 
     m.actionTimer = m.actionTimer + 1
 end
@@ -2264,7 +2262,7 @@ local function mario_on_set_action(m)
     end
 
     if m.action == ACT_WALL_SLIDE then
-        m.vel.y = 0.0
+        m.vel.y = 0
     elseif m.action == ACT_GROUND_POUND and m.prevAction == ACT_SIDE_FLIP then
         m.marioObj.header.gfx.angle.y = limit_angle(m.marioObj.header.gfx.angle.y - 0x8000)
     elseif (m.prevAction == ACT_GROUND_POUND or m.prevAction == ACT_DRILL_DOWN) and (m.action & ACT_FLAG_SWIMMING) ~= 0 then
@@ -2331,6 +2329,10 @@ local function mario_update(m)
     local e = gMarioStateExtras[m.playerIndex]
 
     mario_update_spin_input(m)
+
+    if e.SRollTimer > 0 then
+        e.SRollTimer = e.SRollTimer - 1
+    end
 
     if e.groundPoundCooldown > 0 then
         e.groundPoundCooldown = e.groundPoundCooldown - 1
@@ -2649,6 +2651,7 @@ local function mario_update(m)
 
     --DEBUG FUNCTION
     if (m.controller.buttonPressed & Y_BUTTON) ~= 0 then
+        --m.specialTripleJump = true
         --m.health = 0x200
         --e.oxygenAmount = 0x100
         --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
