@@ -36,9 +36,12 @@ ACT_WATER_GROUND_POUND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SW
 ACT_WATER_GROUND_POUND_LAND = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING | ACT_FLAG_ATTACKING)
 ACT_WATER_POUND_JUMP = allocate_mario_action(ACT_GROUP_SUBMERGED | ACT_FLAG_SWIMMING)
 ACT_GRABBED_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_UP_THROW = allocate_mario_action(ACT_GROUP_STATIONARY)
 ACT_HOLD_CROUCH = allocate_mario_action(ACT_GROUP_STATIONARY)
 ACT_HOLD_DOUBLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_HOLD_DOUBLE_JUMP_LAND = allocate_mario_action(ACT_FLAG_MOVING)
 ACT_HOLD_TRIPLE_JUMP = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+ACT_HOLD_TRIPLE_JUMP_LAND = allocate_mario_action(ACT_FLAG_MOVING)
 ACT_EMOTE_SIT = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_IDLE)
 
 --gLevelValues.entryLevel = LEVEL_WF--LEVEL START DEBUG
@@ -186,6 +189,8 @@ for i = 0, (MAX_PLAYERS - 1) do
     e.hObjJumps = 0
     e.hObjPressed = false
     e.hObjReset = 0
+    e.curObj = nil
+    e.hObjTimer = 0
 
     e.angleDeltaQueue = {}
     for j = 0, (ANGLE_QUEUE_SIZE - 1) do 
@@ -1069,9 +1074,6 @@ local function act_air_dash(m)--AIR DASH
 
     if stepResult == AIR_STEP_HIT_WALL then
         stop_sounds_from_source(m.marioObj.header.gfx.cameraToObject)
-        --play_sound(((m.flags & MARIO_METAL_CAP) ~= 0 and SOUND_ACTION_METAL_BONK or SOUND_ACTION_BONK), m.marioObj.header.gfx.cameraToObject)
-        --set_mario_action(m, ACT_BACKWARD_AIR_KB, 0)
-        --spawn_sync_object(id_bhvHorStarParticleSpawner, 0, m.pos.x, m.pos.y ,m.pos.z, nil)
     else
         if m.actionTimer >= 20 or (m.controller.buttonDown & A_BUTTON) == 0 then
             stop_sounds_from_source(m.marioObj.header.gfx.cameraToObject)
@@ -2076,15 +2078,27 @@ function check_hold_conditions(m)
 end
 
 function act_hold_idle(m)
+    local e = gMarioStateExtras[m.playerIndex]
+
     if m.heldObj == nil then
         return set_mario_action(m, ACT_IDLE, 0)
     elseif m.actionTimer == 0 then
         set_character_animation(m, CHAR_ANIM_IDLE_WITH_LIGHT_OBJ)
+        m.marioBodyState.allowPartRotation = 1
     end
     
     if get_id_from_behavior(m.heldObj.behavior) == id_bhvJumpingBox then
         return set_mario_action(m, ACT_CRAZY_BOX_BOUNCE, 0)
     end
+
+    if (m.controller.buttonDown & L_TRIG) ~= 0 then
+        m.marioBodyState.eyeState = MARIO_EYES_LOOK_UP
+        e.syncedHeadAngle.x = math.max(e.syncedHeadAngle.x - 0x0150, -0x1800)
+    else
+        e.syncedHeadAngle.x = e.syncedHeadAngle.x + (0 - e.syncedHeadAngle.x) * 0.15
+    end
+
+    m.marioBodyState.headAngle.x = e.syncedHeadAngle.x
 
     if (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
         m.faceAngle.y = m.intendedYaw
@@ -2098,11 +2112,223 @@ function act_hold_idle(m)
     if (m.input & INPUT_Z_PRESSED) ~= 0 then
         return set_mario_action(m, ACT_HOLD_CROUCH, 0)
     elseif (m.input & INPUT_B_PRESSED) ~= 0 then
-        return set_mario_action(m, ACT_THROWING, 0)
+        return set_mario_action(m, ((m.controller.buttonDown & L_TRIG) ~= 0 and ACT_UP_THROW or ACT_THROWING), 0)
     end
 
     check_hold_conditions(m)
     stationary_ground_step(m)
+
+    m.actionTimer = m.actionTimer + 1
+end
+
+local function tilt_body_holding(m, startYaw)
+    local e = gMarioStateExtras[m.playerIndex]
+    local dYaw = m.faceAngle.y - startYaw
+    local sideRotate = -(dYaw * m.forwardVel / 12)
+    local wardRotate = m.forwardVel * 170
+
+    sideRotate = math.max(-0x1555, math.min(sideRotate, 0x1555))
+    wardRotate = math.max(0, math.min(wardRotate, 0x1555))
+
+    if m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_WALK_WITH_LIGHT_OBJ or m.marioObj.header.gfx.animInfo.animID == CHAR_ANIM_RUN_WITH_LIGHT_OBJ then
+        m.marioBodyState.torsoAngle.z = approach_s32(m.marioBodyState.torsoAngle.z, sideRotate, 0x400, 0x400)
+        m.marioBodyState.torsoAngle.x = approach_s32(m.marioBodyState.torsoAngle.x, wardRotate, 0x400, 0x400)
+    else
+        m.marioBodyState.torsoAngle.z = 0
+        m.marioBodyState.torsoAngle.x = 0
+    end
+
+    m.marioBodyState.headAngle.x = approach_s32(m.marioBodyState.headAngle.x, math.max(-0x3800, math.min(-wardRotate + e.syncedHeadAngle.x, 0x3800)), 0x400, 0x400)
+end
+
+local function anim_and_audio_for_hold_running(m)
+    local curSpeed = 0
+    local magVel = math.max(m.intendedMag, m.forwardVel)
+
+    if magVel < 4 then
+        magVel = 4
+    end
+
+    if m.actionTimer == 0 then
+        if magVel > 10 then
+            m.actionTimer = 1
+        else
+            curSpeed = magVel * 0x10000
+            if curSpeed < 0x1000 then
+                curSpeed = 0x1000
+            end
+
+            set_character_anim_with_accel(m, CHAR_ANIM_SLOW_WALK_WITH_LIGHT_OBJ, curSpeed)
+            play_step_sound(m, 12, 62)
+        end
+    end
+
+    if m.actionTimer == 1 then
+        if magVel < 10 then
+            m.actionTimer = 0
+        elseif magVel > 18 then
+            m.actionTimer = 2
+        else
+            curSpeed = magVel / 4 * 0x10000
+            set_character_anim_with_accel(m, CHAR_ANIM_WALK_WITH_LIGHT_OBJ, curSpeed)
+            play_step_sound(m, 10, 49)
+        end
+    end
+    
+    if m.actionTimer == 2 then
+        if magVel < 18 then
+            m.actionTimer = 1
+        else
+            curSpeed = magVel / 4 * 0x10000
+            set_character_anim_with_accel(m, CHAR_ANIM_RUN_WITH_LIGHT_OBJ, curSpeed)
+            play_step_sound(m, 10, 45)
+        end
+    end
+end
+
+function act_hold_walking(m)
+    local e = gMarioStateExtras[m.playerIndex]
+    local stepResult = perform_ground_step(m)
+
+    if m.heldObj == nil then
+        return set_mario_action(m, ACT_IDLE, 0)
+    elseif m.actionTimer == 0 then
+        set_character_animation(m, CHAR_ANIM_IDLE_WITH_LIGHT_OBJ)
+        m.marioBodyState.allowPartRotation = 1
+    end
+    
+    if get_id_from_behavior(m.heldObj.behavior) == id_bhvJumpingBox then
+        return set_mario_action(m, ACT_CRAZY_BOX_BOUNCE, 0)
+    end
+
+    if (m.controller.buttonDown & L_TRIG) ~= 0 then
+        m.marioBodyState.eyeState = MARIO_EYES_LOOK_UP
+        e.syncedHeadAngle.x = math.max(e.syncedHeadAngle.x - 0x0150, -0x1800)
+    else
+        e.syncedHeadAngle.x = e.syncedHeadAngle.x + (0 - e.syncedHeadAngle.x) * 0.15
+    end
+
+    anim_and_audio_for_hold_running(m)
+    tilt_body_holding(m, m.faceAngle.y)
+
+    if (m.input & INPUT_Z_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_HOLD_CROUCH, 0)
+    elseif (m.input & INPUT_B_PRESSED) ~= 0 then
+        return set_mario_action(m, ((m.controller.buttonDown & L_TRIG) ~= 0 and ACT_UP_THROW or ACT_THROWING), 0)
+    end
+
+    if (m.input & INPUT_A_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_HOLD_JUMP, 0)
+    end
+
+    if (m.input & INPUT_ZERO_MOVEMENT) ~= 0 then
+        return set_mario_action(m, ACT_HOLD_DECELERATING, 0);
+    end
+
+    --m.intendedMag = m.intendedMag * 0.7
+
+    update_walking_speed(m)
+
+    if stepResult == GROUND_STEP_LEFT_GROUND then
+        set_mario_action(m, ACT_HOLD_FREEFALL, 0)
+    elseif stepResult == GROUND_STEP_HIT_WALL then
+        if m.forwardVel > 16 then
+            mario_set_forward_vel(m, 16)
+        end
+    end
+
+    if 0.4 * m.intendedMag - m.forwardVel > 10 then
+        set_mario_particle_flags(m, PARTICLE_DUST, 0)
+    end
+
+    m.actionTimer = m.actionTimer + 1
+end
+
+local function mario_throw_up_object(m)
+    local e = gMarioStateExtras[m.playerIndex]
+
+    if m.heldObj ~= nil then
+        e.hObjTimer = 0
+        obj_set_held_state(m.heldObj, get_behavior_from_id(id_bhvCarrySomething4))
+        
+        if m.marioBodyState then
+            m.heldObj.oPosX = m.marioBodyState.heldObjLastPosition.x + 100 * sins(m.faceAngle.y)
+            m.heldObj.oPosY = m.marioBodyState.heldObjLastPosition.y + 50
+            m.heldObj.oPosZ = m.marioBodyState.heldObjLastPosition.z + 100 * coss(m.faceAngle.y)
+            m.heldObj.oInteractStatus = INT_STATUS_MARIO_DROP_OBJECT
+            m.marioBodyState.allowPartRotation = 0
+            e.syncedHeadAngle.x = 0
+        end
+
+        m.heldObj.oMoveAngleYaw = m.faceAngle.y
+
+        if m.heldObj.oSyncID ~= 0 then
+            network_send_object(m.heldObj, true)
+        end
+
+        m.heldObj = nil
+    end
+
+    e.hObjTimer = e.hObjTimer + 1
+
+    if e.curObj ~= nil then
+        if e.hObjTimer <= 8 then
+            e.curObj.oVelY = 48
+            e.curObj.oMoveAngleYaw = m.faceAngle.y
+            local objID = get_id_from_behavior(e.curObj.behavior)
+            if objID == id_bhvBobomb then
+                e.curObj.oAction = BOBOMB_ACT_LAUNCHED
+            elseif objID == id_bhvMips then
+                e.curObj.oHeldState = HELD_THROWN
+                e.curObj.oGravity = 0.8
+            end
+
+            if e.curObj.oSyncID ~= 0 then
+                if e.hObjTimer < 3 then
+                    particle = {id_bhvMistCircParticleSpawner, id_bhvHorStarParticleSpawner}
+                    for icle = 1, #particle do
+                        spawn_sync_object(particle[icle], 0, e.curObj.oPosX, e.curObj.oPosY + 100, e.curObj.oPosZ, nil)
+                    end
+                end
+                network_send_object(e.curObj, true)
+            end
+        end
+    end
+end
+
+local function act_up_throw(m)--THROWING OBJECTS UP / UP THROW (GROUND)
+    local e = gMarioStateExtras[m.playerIndex]
+
+    if m.actionTimer == 0 then
+        e.curObj = m.heldObj
+        m.marioBodyState.allowPartRotation = 1
+        set_character_animation(m, CHAR_ANIM_START_CROUCHING)
+        play_mario_sound(m, SOUND_ACTION_THROW, CHAR_SOUND_WAH2)
+    end
+
+    m.marioBodyState.eyeState = MARIO_EYES_LOOK_UP
+    e.syncedHeadAngle.x = e.syncedHeadAngle.x + (0 - e.syncedHeadAngle.x) * 0.15
+    m.marioBodyState.headAngle.x = e.syncedHeadAngle.x
+
+    if (m.input & INPUT_UNKNOWN_10) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_SHOCKWAVE_BOUNCE, 0)
+    end
+
+    if (m.input & INPUT_OFF_FLOOR) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_FREEFALL, 0)
+    end
+
+    if m.actionTimer == 6 then
+        m.marioBodyState.allowPartRotation = 0
+        e.syncedHeadAngle.x = 0
+        play_sound(SOUND_ACTION_HIT, m.marioObj.header.gfx.cameraToObject)
+        play_sound_with_freq_scale(SOUND_GENERAL_ENEMY_ALERT1, m.marioObj.header.gfx.cameraToObject, 1.5)
+        queue_rumble_data_mario(m, 8, 100)
+    elseif m.actionTimer > 6 then
+        mario_throw_up_object(m)
+    end
+    
+    animated_stationary_ground_step(m, CHAR_ANIM_GROUND_KICK, ACT_IDLE)
 
     m.actionTimer = m.actionTimer + 1
 end
@@ -2757,6 +2983,8 @@ local function mario_update(m)
         --m.specialTripleJump = true
         --m.health = 0x200
         --e.oxygenAmount = 0x100
+        --m.vel.y = 100
+        --spawn_sync_object(id_bhvBobomb, E_MODEL_BOBOMB_BUDDY, m.pos.x, m.pos.y, m.pos.z - 100, nil)
         --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
         --spawn_sync_object(id_bhvChuckya, E_MODEL_CHUCKYA, m.pos.x, m.pos.y, m.pos.z - 500, nil)
         --spawn_sync_object(id_bhvBlueCoinSliding, E_MODEL_BLUE_COIN, m.pos.x, m.pos.y + 30, m.pos.z - 300, nil)
@@ -2985,11 +3213,13 @@ end)
 hook_mario_action(ACT_GROUND_POUND, { every_frame = act_ground_pound }, INT_GROUND_POUND)
 hook_mario_action(ACT_DIVE_SLIDE, { every_frame = act_dive_slide})
 hook_mario_action(ACT_WALL_KICK_AIR, { every_frame = act_wall_kick_air })
+hook_mario_action(ACT_HOLD_IDLE, { every_frame = act_hold_idle})
+hook_mario_action(ACT_HOLD_WALKING, { every_frame = act_hold_walking})
+hook_mario_action(ACT_THROWING, { every_frame = act_throwing})
 hook_mario_action(ACT_SPECIAL_TRIPLE_JUMP, { every_frame = act_special_triple_jump })
 hook_mario_action(ACT_GRABBED, { every_frame = act_grabbed })
-hook_mario_action(ACT_GRABBED_JUMP, { every_frame = act_grabbed_jump })
 
---NEW GROUND ACTIONS
+--NEW GROUND / AIR ACTIONS
 
 hook_mario_action(ACT_FAKE_FREEFALL, { every_frame = act_fake_freefall })
 hook_mario_action(ACT_SPIN_JUMP, { every_frame = act_spin_jump }, INT_KICK)
@@ -3002,6 +3232,7 @@ hook_mario_action(ACT_AIR_DASH_END, { every_frame = act_air_dash_end})
 hook_mario_action(ACT_TWIRL_N_PLACE, { every_frame = act_twirl_n_place, gravity = act_twirl_n_place_gravity })
 hook_mario_action(ACT_DRILL_DOWN, { every_frame = act_drill_down}, INT_GROUND_POUND)
 hook_mario_action(ACT_DRILL_DOWN_LAND, { every_frame = act_drill_down_land}, INT_GROUND_POUND)
+hook_mario_action(ACT_GRABBED_JUMP, { every_frame = act_grabbed_jump })
 hook_mario_action(ACT_SPECIAL_GROUND_POUND, { every_frame = act_special_ground_pound}, INT_GROUND_POUND)
 hook_mario_action(ACT_SPECIAL_GROUND_POUND_LAND, { every_frame = act_special_ground_pound_land}, INT_GROUND_POUND)
 
@@ -3014,14 +3245,13 @@ hook_mario_action(ACT_WATER_GROUND_POUND, { every_frame = act_water_ground_pound
 hook_mario_action(ACT_WATER_GROUND_POUND_LAND, { every_frame = act_water_ground_pound_land }, INT_GROUND_POUND)
 hook_mario_action(ACT_WATER_POUND_JUMP, { every_frame = act_water_pound_jump})
 
---HOLD SYSTEM ACTIONS
-
-hook_mario_action(ACT_HOLD_IDLE, { every_frame = act_hold_idle})
+--HOLD ACTIONS
+hook_mario_action(ACT_UP_THROW, { every_frame = act_up_throw})
 hook_mario_action(ACT_HOLD_CROUCH, { every_frame = act_hold_crouch})
-hook_mario_action(ACT_THROWING, { every_frame = act_throwing})
 hook_mario_action(ACT_HOLD_DOUBLE_JUMP, { every_frame = act_hold_double_jump})
+hook_mario_action(ACT_HOLD_DOUBLE_JUMP_LAND, { every_frame = act_hold_double_jump})
 hook_mario_action(ACT_HOLD_TRIPLE_JUMP, { every_frame = act_hold_triple_jump})
+hook_mario_action(ACT_HOLD_TRIPLE_JUMP_LAND, { every_frame = act_hold_triple_jump_land})
 
 --EMOTE
-
 hook_mario_action(ACT_EMOTE_SIT, { every_frame = act_emote_sit })
