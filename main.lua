@@ -182,6 +182,7 @@ for i = 0, (MAX_PLAYERS - 1) do
     s.allowOxygen = true
     s.allowSTJ = false
 
+    e.hObj = false
     e.hObjJumps = 0
     e.hObjPressed = false
     e.hObjReset = 0
@@ -471,9 +472,26 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
     end
 
     play_sound_with_freq_scale(SOUND_ENV_WATER, m.marioObj.header.gfx.cameraToObject, 1.35)
+
+    if (m.marioObj.collidedObjInteractTypes & INTERACT_GRABBABLE) ~= 0 then
+        local mColObj = mario_get_collided_object(m, INTERACT_GRABBABLE)
+
+        local dx = mColObj.oPosX - m.pos.x
+        local dz = mColObj.oPosZ - m.pos.z
+        local dAngObj = atan2s(dz, dx) - m.faceAngle.y
+
+        if dAngObj >= -0x4000 and dAngObj <= 0x4000 then
+            m.usedObj = mColObj
+            mario_grab_used_object(m)
+
+            if m.heldObj ~= nil then
+                m.marioBodyState.grabPos = GRAB_POS_LIGHT_OBJ
+            end
+        end
+    end
     
     e.spinBufferTimer = e.spinBufferTimer - 1
-    if not s.swapWaterSet and (m.input & INPUT_B_PRESSED) ~= 0 or m.controller.buttonPressed & X_BUTTON ~= 0 then
+    if (not s.swapWaterSet and (m.input & INPUT_B_PRESSED) ~= 0 or m.controller.buttonPressed & X_BUTTON ~= 0) and not e.hObj then
         e.spinBufferTimer = 5
     end
 
@@ -487,7 +505,8 @@ local function act_water_spin(m)--GALAXY SWIM / STAR SWIM / SPIN SWIM
             m.marioBodyState.allowPartRotation = 0
             m.marioBodyState.torsoAngle.x = 0
             m.marioBodyState.torsoAngle.y = 0
-            set_mario_action(m, ACT_WATER_ACTION_END, 0)
+            
+            set_mario_action(m, (m.heldObj ~= nil and (get_id_from_behavior(m.heldObj.behavior) == id_bhvKoopaShellUnderwater and ACT_WATER_SHELL_SWIMMING or ACT_HOLD_WATER_ACTION_END) or ACT_WATER_ACTION_END), 0)
         end
     end
         local targetPitch = -252.0 * m.controller.stickY
@@ -804,7 +823,8 @@ local function act_water_pound_jump(m)--WATER POUND JUMP
 end
 
 local function act_dolphin_dive(m)--DOLPHIN DIVE
-local s = gPlayerSyncTable[m.playerIndex]
+    local e = gMarioStateExtras[m.playerIndex]
+    local s = gPlayerSyncTable[m.playerIndex]
     local stepResult = common_air_action_step(m, ACT_FREEFALL, CHAR_ANIM_DIVE, AIR_STEP_CHECK_LEDGE_GRAB | AIR_STEP_CHECK_HANG)
     -- perform_air_step(m, 0)
 
@@ -825,14 +845,14 @@ local s = gPlayerSyncTable[m.playerIndex]
                 return 1
             end
         end
-        return set_mario_action(m, ACT_DIVE_SLIDE, 0)
+        return set_mario_action(m, (e.hObj and ACT_HOLD_STOMACH_SLIDE or ACT_DIVE_SLIDE), 0)
     end
 
     if (m.pos.y < m.waterLevel - 100) then
         m.faceAngle.x = m.vel.y * 0x100
         set_mario_particle_flags(m, PARTICLE_WATER_SPLASH, 0)
         play_sound(SOUND_ACTION_UNKNOWN432, m.marioObj.header.gfx.cameraToObject)
-        set_mario_action(m, ACT_SWIMMING_END, 0)
+        set_mario_action(m, (e.hObj and ACT_HOLD_SWIMMING_END or ACT_SWIMMING_END), 0)
 
         return
     end
@@ -842,9 +862,6 @@ local s = gPlayerSyncTable[m.playerIndex]
 end
 
 local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
-    if not m or m.playerIndex == nil or not gMarioStateExtras[m.playerIndex] then
-        return false
-    end
     local stepResult = perform_air_step(m, 0)
     local e = gMarioStateExtras[m.playerIndex]
     update_air_without_turn(m);
@@ -852,6 +869,22 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
     if m.actionTimer == 0 then
         set_mario_animation(m, CHAR_ANIM_RUNNING_UNUSED)--Needs to be different cause for an example, doing Star Spin then an Whirlwind, it'll not actually change the animation to the custom one due to it before being the same animation. 
         smlua_anim_util_set_animation(m.marioObj, (e.fromGround and "star_spin_ground" or "star_spin"))
+    end
+
+    if (m.marioObj.collidedObjInteractTypes & INTERACT_GRABBABLE) ~= 0 and mario_check_object_grab(m) then
+        local mColObj = mario_get_collided_object(m, INTERACT_GRABBABLE)
+        local objID = get_id_from_behavior(mColObj.behavior)
+        local Browser = obj_get_first_with_behavior_id(id_bhvBowser)
+        
+        m.usedObj = mColObj
+
+        if (m.usedObj.oInteractionSubtype & INT_SUBTYPE_GRABS_MARIO) == 0 and objID ~= id_bhvBobomb and not obj_check_hitbox_overlap(m.marioObj, Browser) then 
+            mario_grab_used_object(m)
+
+            if m.heldObj ~= nil then
+                m.marioBodyState.grabPos = GRAB_POS_LIGHT_OBJ
+            end
+        end
     end
 
     if m.intendedMag > 0 then
@@ -879,14 +912,14 @@ local function act_spin_jump(m)--GALAXY SPIN / STAR SPIN / SPIN JUMP
             end
             
             if (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
-                set_mario_action(m, ACT_WALKING, 0)
+                set_mario_action(m, (e.hObj and ACT_HOLD_WALKING or ACT_WALKING), 0)
             end
 
             if m.marioObj.header.gfx.animInfo.animFrame >= 35 then
-                set_mario_action(m, ACT_IDLE, 0)
+                set_mario_action(m, (e.hObj and ACT_HOLD_IDLE or ACT_IDLE), 0)
             end
         else
-            set_mario_action(m, ACT_FREEFALL_LAND, 0)
+            set_mario_action(m, (e.hObj and ACT_HOLD_FREEFALL_LAND or ACT_FREEFALL_LAND), 0)
         end
         return
     end
@@ -943,7 +976,7 @@ local function act_spin_jump_end(m)--GALAXY SPIN END / STAR SPIN END / SPIN JUMP
             end
         end
 
-        return set_mario_action(m, ACT_FREEFALL_LAND, 0)
+        return set_mario_action(m, (e.hObj and ACT_HOLD_FREEFALL_LAND or ACT_FREEFALL_LAND), 0)
     end
 
     if stepResult == AIR_STEP_HIT_WALL then
@@ -1623,7 +1656,7 @@ function act_ground_pound(m)
 end
 
 function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
-    common_slide_action(m, ACT_STOMACH_SLIDE_STOP, ACT_FREEFALL, CHAR_ANIM_DIVE);
+    common_slide_action(m, ACT_STOMACH_SLIDE_STOP , ACT_FREEFALL, CHAR_ANIM_DIVE);
     local e = gMarioStateExtras[m.playerIndex]
     local s = gPlayerSyncTable[m.playerIndex]
     
@@ -1631,6 +1664,26 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
     local flaSurDX = m.floor.normal.y >= 0.99985
     local steepness = math.sqrt(m.floor.normal.x * m.floor.normal.x + m.floor.normal.z * m.floor.normal.z)
     local upHill = math.abs((m.floorAngle - m.slideYaw + 0x8000) % 0x10000 - 0x8000) > 0x4000
+
+    if (m.marioObj.collidedObjInteractTypes & INTERACT_GRABBABLE) ~= 0 and mario_check_object_grab(m) then
+        local mColObj = mario_get_collided_object(m, INTERACT_GRABBABLE)
+        local Browser = obj_get_first_with_behavior_id(id_bhvBowser)
+
+        local dx = mColObj.oPosX - m.pos.x
+        local dz = mColObj.oPosZ - m.pos.z
+        local dAngObj = atan2s(dz, dx) - m.faceAngle.y
+
+        if dAngObj >= -0x2AAA and dAngObj <= 0x2AAA then
+            m.usedObj = mColObj
+            if (m.usedObj.oInteractionSubtype & INT_SUBTYPE_GRABS_MARIO) == 0 and not obj_check_hitbox_overlap(m.marioObj, Browser) then
+                mario_grab_used_object(m)
+
+                if m.heldObj ~= nil then
+                    m.marioBodyState.grabPos = GRAB_POS_LIGHT_OBJ
+                end
+            end
+        end
+    end
 
     if m.forwardVel <= 13 and m.wall ~= nil then--bonk
         e.ssWaterSpeed = 0
@@ -1662,7 +1715,7 @@ function act_dive_slide(m)--SUNSHINE DIVE SLIDE / BODY SLAM
 
     play_mario_landing_sound_once(m, SOUND_ACTION_TERRAIN_BODY_HIT_GROUND)
 
-    if (m.floor.type ~= SURFACE_WATER or m.floor.type ~= SURFACE_FLOWING_WATER) then
+    if (m.floor.type ~= SURFACE_WATER and m.floor.type ~= SURFACE_FLOWING_WATER) then
         e.ssWaterSpeed = 0
         e.isWaterSliding = false
     end
@@ -2455,6 +2508,8 @@ local function mario_update(m)
             end
         end
     end
+
+    e.hObj = (m.heldObj ~= nil and true or false)
 
     --FASTER MONKEY BARS
     if m.action == ACT_HANG_MOVING then
