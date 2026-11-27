@@ -2097,6 +2097,37 @@ function check_hold_conditions(m)
     end
 end
 
+function hold_jump(m)
+    local e = gMarioStateExtras[m.playerIndex]
+    
+    if (m.doubleJumpTimer == 0) or (m.squishTimer ~= 0) then
+        set_mario_action(m, ACT_HOLD_JUMP, 0);
+    else
+        if e.hObjJumps == 1 then
+            set_mario_y_vel_based_on_fspeed(m, 52.0, 0.25);
+            set_mario_action(m, ACT_HOLD_DOUBLE_JUMP, 0);
+        elseif (m.prevAction) == ACT_FREEFALL_LAND then
+            set_mario_y_vel_based_on_fspeed(m, 52.0, 0.25);
+            set_mario_action(m, ACT_HOLD_DOUBLE_JUMP, 0)
+        elseif e.hObjJumps == 2 then
+            -- if (m.flags & MARIO_WING_CAP) then
+            --     set_mario_action(m, ACT_FLYING_TRIPLE_JUMP, 0);
+            -- else
+            if m.forwardVel > 20.0 then
+                set_mario_y_vel_based_on_fspeed(m, 69.0, 0.0);
+                set_mario_action(m, ACT_HOLD_TRIPLE_JUMP, 0);
+            else
+                set_mario_action(m, ACT_HOLD_JUMP, 0);
+            end
+        else
+            set_mario_action(m, ACT_HOLD_JUMP, 0);
+        end
+    end
+    
+    -- smlua_anim_util_set_animation(m.marioObj, (e.hObjJumps == 2 and "double_jump_holding" or "triple_jump_holding"))
+    -- play_character_sound_offset(m, (e.hObjJumps == 3 and CHAR_SOUND_YAHOO_WAHA_YIPPEE or CHAR_SOUND_HOOHOO), (e.hObjJumps == 3 and math.random(0, 4) << 16 or 0))
+end
+
 function act_hold_idle(m)
     local e = gMarioStateExtras[m.playerIndex]
 
@@ -2126,7 +2157,7 @@ function act_hold_idle(m)
     end
 
     if (m.input & INPUT_A_PRESSED) ~= 0 then
-        return set_mario_action(m, ACT_HOLD_JUMP, 0)
+        return hold_jump(m)
     end
 
     if (m.input & INPUT_Z_PRESSED) ~= 0 then
@@ -2139,6 +2170,141 @@ function act_hold_idle(m)
     stationary_ground_step(m)
 
     m.actionTimer = m.actionTimer + 1
+end
+
+function act_hold_jump(m)
+    local e = gMarioStateExtras[m.playerIndex]
+    e.hObjJumps = 1
+
+    if (m.marioObj.oInteractStatus & INT_STATUS_MARIO_DROP_OBJECT) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_FREEFALL, 0);
+    end
+
+    if (m.input & INPUT_B_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_AIR_THROW, 0);
+    end
+
+    if (m.input & INPUT_Z_PRESSED) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_GROUND_POUND, 0);
+    end
+
+    play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, 0);
+    common_air_action_step(m, ACT_HOLD_JUMP_LAND, CHAR_ANIM_JUMP_WITH_LIGHT_OBJ, AIR_STEP_CHECK_LEDGE_GRAB);
+end
+
+function check_common_landing_cancels(m, p)
+    if (m.input & INPUT_A_PRESSED) ~= 0 then
+        return hold_jump(m)
+    elseif (m.input & INPUT_OFF_FLOOR) ~= 0 then
+        return set_mario_action(m, ACT_HOLD_FREEFALL, 0);
+    elseif (m.input & INPUT_NONZERO_ANALOG) ~= 0 then
+        return set_mario_action(m, ACT_HOLD_WALKING, 0);
+    elseif (m.input & INPUT_ABOVE_SLIDE) ~= 0 then
+        return set_mario_action(m, ACT_HOLD_BEGIN_SLIDING, 0);
+    end
+
+    return false
+end
+
+function act_hold_jump_land(m)
+    if (m.marioObj.oInteractStatus & INT_STATUS_MARIO_DROP_OBJECT) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_HOLD_JUMP_LAND_STOP, 0);
+    end
+
+    if (check_common_landing_cancels(m, 0)) then
+        m.doubleJumpTimer = 4
+        return true
+    end
+
+    landing_step(m, CHAR_ANIM_JUMP_LAND_WITH_LIGHT_OBJ, ACT_HOLD_IDLE)
+end
+
+function act_hold_jump_land_stop(m)
+    if (m.marioObj.oInteractStatus & INT_STATUS_MARIO_DROP_OBJECT) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_IDLE, 0)
+    end
+
+    if (m.input & INPUT_UNKNOWN_10) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_SHOCKWAVE_BOUNCE, 0)
+    end
+
+    if (m.input & (INPUT_NONZERO_ANALOG | INPUT_A_PRESSED | INPUT_OFF_FLOOR | INPUT_ABOVE_SLIDE)) ~= 0 then
+        return check_common_hold_action_exits(m)
+    end
+
+    if (m.input & INPUT_B_PRESSED) then
+        return set_mario_action(m, ACT_THROWING, 0);
+    end
+
+    landing_step(m, CHAR_ANIM_JUMP_LAND_WITH_LIGHT_OBJ, ACT_HOLD_IDLE);
+end
+
+function act_hold_double_jump(m)
+    local e = gMarioStateExtras[m.playerIndex]
+    e.hObjJumps = 2
+
+    if (m.marioObj.oInteractStatus & INT_STATUS_MARIO_DROP_OBJECT) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_FREEFALL, 0);
+    end
+
+    if (m.input & INPUT_B_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_AIR_THROW, 0);
+    end
+
+    if (m.input & INPUT_Z_PRESSED) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_GROUND_POUND, 0);
+    end
+
+    play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, CHAR_SOUND_HOOHOO);
+    smlua_anim_util_set_animation(m.marioObj, "double_jump_holding")
+    common_air_action_step(m, ACT_HOLD_DOUBLE_JUMP_LAND, CHAR_ANIM_JUMP_WITH_LIGHT_OBJ, AIR_STEP_CHECK_LEDGE_GRAB);
+end
+
+function act_hold_double_jump_land(m)
+    if (m.marioObj.oInteractStatus & INT_STATUS_MARIO_DROP_OBJECT) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_HOLD_JUMP_LAND_STOP, 0);
+    end
+
+    if (check_common_landing_cancels(m, 0)) then
+        m.doubleJumpTimer = 4
+        return true
+    end
+
+    landing_step(m, CHAR_ANIM_JUMP_LAND_WITH_LIGHT_OBJ, ACT_HOLD_IDLE)
+end
+
+function act_hold_triple_jump(m)
+    local e = gMarioStateExtras[m.playerIndex]
+    e.hObjJumps = 3
+
+    if (m.marioObj.oInteractStatus & INT_STATUS_MARIO_DROP_OBJECT) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_FREEFALL, 0);
+    end
+
+    if (m.input & INPUT_B_PRESSED) ~= 0 then
+        return set_mario_action(m, ACT_AIR_THROW, 0);
+    end
+
+    if (m.input & INPUT_Z_PRESSED) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_GROUND_POUND, 0);
+    end
+
+    play_mario_sound(m, SOUND_ACTION_TERRAIN_JUMP, CHAR_SOUND_YAHOO);
+    smlua_anim_util_set_animation(m.marioObj, "triple_jump_holding")
+    common_air_action_step(m, ACT_HOLD_DOUBLE_JUMP_LAND, CHAR_ANIM_JUMP_WITH_LIGHT_OBJ, AIR_STEP_CHECK_LEDGE_GRAB);
+end
+
+function act_hold_triple_jump_land(m)
+    if (m.marioObj.oInteractStatus & INT_STATUS_MARIO_DROP_OBJECT) ~= 0 then
+        return drop_and_set_mario_action(m, ACT_HOLD_JUMP_LAND_STOP, 0);
+    end
+
+    if (check_common_landing_cancels(m, 0)) then
+        m.doubleJumpTimer = 4
+        return true
+    end
+
+    landing_step(m, CHAR_ANIM_JUMP_LAND_WITH_LIGHT_OBJ, ACT_HOLD_IDLE)
 end
 
 local function tilt_body_holding(m, startYaw)
@@ -2214,7 +2380,7 @@ function act_hold_walking(m)
     end
 
     if (m.input & INPUT_A_PRESSED) ~= 0 then
-        return set_mario_action(m, ACT_HOLD_JUMP, 0)
+        return hold_jump(m)
     end
 
     -- if (m.input & INPUT_ZERO_MOVEMENT) ~= 0 then
@@ -2620,6 +2786,8 @@ local function mario_on_set_action(m)
         m.marioBodyState.torsoAngle.y = 0
     elseif m.action == ACT_LEDGE_GRAB then
         e.rotAngle = m.forwardVel
+    elseif m.action == ACT_HOLD_JUMP_LAND then
+        m.doubleJumpTimer = 10
     elseif m.action ~= ACT_GRABBED then
         e.grabEscape = 0
         e.grabStruggle = false
@@ -2709,36 +2877,6 @@ local function mario_update(m)
 
     if e.ssCooldown > 0 then
         e.ssCooldown = e.ssCooldown - 1
-    end
-
-    --GRABBED TRANSITION TO DOUBLE & TRIPLE JUMPS
-    if m.heldObj ~= nil then
-        if (m.action & ACT_FLAG_AIR) ~= 0 and not e.hObjPressed and not HOLDJUMPCANCEL[m.action] then
-            if e.hObjJumps == 2 and m.forwardVel < 10 then--too slow to perfom an triple jump.
-                e.hObjJumps = 1
-            else
-                e.hObjJumps = e.hObjJumps + 1
-            end
-
-            if e.hObjJumps >= 2 then
-                m.vel.y = (e.hObjJumps == 3 and 65 or (m.vel.y + 16))
-                smlua_anim_util_set_animation(m.marioObj, (e.hObjJumps == 2 and "double_jump_holding" or "triple_jump_holding"))
-                play_character_sound_offset(m, (e.hObjJumps == 3 and CHAR_SOUND_YAHOO_WAHA_YIPPEE or CHAR_SOUND_HOOHOO), (e.hObjJumps == 3 and math.random(0, 4) << 16 or 0))
-            end
-            e.hObjPressed = true
-        elseif HOLDJUMPCANCEL[m.action] then
-            e.hObjJumps = 0
-        elseif (m.action & ACT_FLAG_AIR) == 0 then
-            e.hObjPressed = false
-        end
-
-        if (m.action == ACT_HOLD_IDLE or m.action == ACT_HOLD_WALKING or m.action == ACT_HOLD_JUMP_LAND_STOP) or e.hObjJumps == 3 then
-            if e.hObjReset >= 20 then
-                e.hObjReset = e.hObjReset + 1
-            else
-                e.hObjJumps = 0
-            end
-        end
     end
 
     e.hObj = (m.heldObj ~= nil and true or false)
@@ -3254,8 +3392,11 @@ hook_mario_action(ACT_WATER_POUND_JUMP, { every_frame = act_water_pound_jump})
 --HOLD ACTIONS
 hook_mario_action(ACT_UP_THROW, { every_frame = act_up_throw})
 hook_mario_action(ACT_HOLD_CROUCH, { every_frame = act_hold_crouch})
+hook_mario_action(ACT_HOLD_JUMP, { every_frame = act_hold_jump})
+hook_mario_action(ACT_HOLD_JUMP_LAND, { every_frame = act_hold_jump_land})
+hook_mario_action(ACT_HOLD_JUMP_LAND_STOP, { every_frame = act_hold_jump_land_stop})
 hook_mario_action(ACT_HOLD_DOUBLE_JUMP, { every_frame = act_hold_double_jump})
-hook_mario_action(ACT_HOLD_DOUBLE_JUMP_LAND, { every_frame = act_hold_double_jump})
+hook_mario_action(ACT_HOLD_DOUBLE_JUMP_LAND, { every_frame = act_hold_double_jump_land})
 hook_mario_action(ACT_HOLD_TRIPLE_JUMP, { every_frame = act_hold_triple_jump})
 hook_mario_action(ACT_HOLD_TRIPLE_JUMP_LAND, { every_frame = act_hold_triple_jump_land})
 
