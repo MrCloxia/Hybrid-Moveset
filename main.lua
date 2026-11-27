@@ -160,6 +160,26 @@ local WATERHOLDACTIONS = {
     [ACT_WATER_SHELL_SWIMMING] = true
 }
 
+local HOLDACTIONS = {
+    [ACT_HOLD_IDLE] = true,
+    [ACT_HOLD_PANTING_UNUSED] = true,
+    [ACT_HOLD_WALKING] = true,
+    [ACT_HOLD_DECELERATING] = true,
+    [ACT_HOLD_JUMP] = true,
+    [ACT_HOLD_JUMP_LAND] = true,
+    [ACT_HOLD_JUMP_LAND_STOP] = true,
+    [ACT_HOLD_FREEFALL] = true,
+    [ACT_HOLD_FREEFALL_LAND] = true,
+    [ACT_HOLD_FREEFALL_LAND_STOP] = true,
+    [ACT_HOLD_BEGIN_SLIDING] = true,
+    [ACT_HOLD_BUTT_SLIDE] = true,
+    [ACT_HOLD_BUTT_SLIDE_STOP] = true,
+    [ACT_HOLD_BUTT_SLIDE_AIR] = true,
+    [ACT_HOLD_STOMACH_SLIDE] = true,
+    [ACT_HOLD_QUICKSAND_JUMP_LAND] = true,
+    [ACT_HOLD_WATER_JUMP] = true
+}
+
 local convert_actions = {
     [ACT_AIR_HIT_WALL] = ACT_CUSTOM_AIR_HIT_WALL,
     [ACT_SLIDE_KICK] = ACT_ROLL,
@@ -2143,46 +2163,22 @@ end
 
 local function anim_and_audio_for_hold_running(m)
     local curSpeed = 0
-    local magVel = math.max(m.intendedMag, m.forwardVel)
+    local magVel = math.max(m.intendedMag, m.forwardVel) / 1.5
 
-    if magVel < 4 then
-        magVel = 4
+    if curSpeed < 0x1000 then
+        curSpeed = 0x1000
     end
+    curSpeed = magVel * 0x10000
 
-    if m.actionTimer == 0 then
-        if magVel > 10 then
-            m.actionTimer = 1
-        else
-            curSpeed = magVel * 0x10000
-            if curSpeed < 0x1000 then
-                curSpeed = 0x1000
-            end
-
-            set_character_anim_with_accel(m, CHAR_ANIM_SLOW_WALK_WITH_LIGHT_OBJ, curSpeed)
-            play_step_sound(m, 12, 62)
-        end
-    end
-
-    if m.actionTimer == 1 then
-        if magVel < 10 then
-            m.actionTimer = 0
-        elseif magVel > 18 then
-            m.actionTimer = 2
-        else
-            curSpeed = magVel / 4 * 0x10000
-            set_character_anim_with_accel(m, CHAR_ANIM_WALK_WITH_LIGHT_OBJ, curSpeed)
-            play_step_sound(m, 10, 49)
-        end
-    end
-    
-    if m.actionTimer == 2 then
-        if magVel < 18 then
-            m.actionTimer = 1
-        else
-            curSpeed = magVel / 4 * 0x10000
-            set_character_anim_with_accel(m, CHAR_ANIM_RUN_WITH_LIGHT_OBJ, curSpeed)
-            play_step_sound(m, 10, 45)
-        end
+    if magVel < 6 then
+        set_character_anim_with_accel(m, CHAR_ANIM_SLOW_WALK_WITH_LIGHT_OBJ, curSpeed)
+        play_step_sound(m, 12, 62)
+    elseif magVel < 10 then
+        set_character_anim_with_accel(m, CHAR_ANIM_WALK_WITH_LIGHT_OBJ, curSpeed)
+        play_step_sound(m, 12, 62)
+    else
+        set_character_anim_with_accel(m, CHAR_ANIM_RUN_WITH_LIGHT_OBJ, curSpeed / 2.5)
+        play_step_sound(m, 10, 49)
     end
 end
 
@@ -2221,8 +2217,16 @@ function act_hold_walking(m)
         return set_mario_action(m, ACT_HOLD_JUMP, 0)
     end
 
-    if (m.input & INPUT_ZERO_MOVEMENT) ~= 0 then
-        return set_mario_action(m, ACT_HOLD_DECELERATING, 0);
+    -- if (m.input & INPUT_ZERO_MOVEMENT) ~= 0 then
+    --     return set_mario_action(m, ACT_HOLD_DECELERATING, 0);
+    -- end
+
+    if (m.input & INPUT_ZERO_MOVEMENT) ~= 0 and (m.forwardVel <= 3) then
+        return set_mario_action(m, ACT_HOLD_IDLE, 0);
+    end
+
+    if should_begin_sliding(m) ~= 0 then
+        return set_mario_action(m, ACT_HOLD_BEGIN_SLIDING, 0);
     end
 
     --m.intendedMag = m.intendedMag * 0.7
@@ -2542,12 +2546,14 @@ local function before_set_mario_action(m, action)
         return action
     end
 
-    if m.action == ACT_EMOTE_SIT then
+    if m.action == ACT_EMOTE_SIT or HOLDACTIONS[m.action] then
         m.marioBodyState.allowPartRotation = 0
         m.marioBodyState.headAngle.x = 0
         m.marioBodyState.headAngle.y = 0
+        m.marioBodyState.headAngle.z = 0
         m.marioBodyState.torsoAngle.x = 0
         m.marioBodyState.torsoAngle.y = 0
+        m.marioBodyState.torsoAngle.z = 0
         e.syncedHeadAngle.x = 0
         e.syncedHeadAngle.y = 0
     end
@@ -2985,7 +2991,7 @@ local function mario_update(m)
         --e.oxygenAmount = 0x100
         --m.vel.y = 100
         --spawn_sync_object(id_bhvBobomb, E_MODEL_BOBOMB_BUDDY, m.pos.x, m.pos.y, m.pos.z - 100, nil)
-        --spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
+        -- spawn_sync_object(id_bhvBreakableBoxSmall, E_MODEL_BREAKABLE_BOX_SMALL, m.pos.x, m.pos.y, m.pos.z - 100, nil)
         --spawn_sync_object(id_bhvChuckya, E_MODEL_CHUCKYA, m.pos.x, m.pos.y, m.pos.z - 500, nil)
         --spawn_sync_object(id_bhvBlueCoinSliding, E_MODEL_BLUE_COIN, m.pos.x, m.pos.y + 30, m.pos.z - 300, nil)
         --set_water_level(0, m.pos.y + 12, true)
